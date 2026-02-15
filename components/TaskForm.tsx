@@ -27,15 +27,13 @@ const WheelPicker = ({
   const isInternalUpdate = useRef(false);
   const scrollTimeout = useRef<number | null>(null);
 
-  // Sync scroll position when value changes externally (e.g. from duration preset or initial mount)
+  // Sync scroll position when value changes externally
   useEffect(() => {
     if (scrollRef.current && !isInternalUpdate.current) {
       const index = options.indexOf(value);
       if (index !== -1) {
-        scrollRef.current.scrollTo({
-          top: index * ITEM_HEIGHT,
-          behavior: 'smooth'
-        });
+        // Use instant scroll for initial sync and external updates to avoid "slow" feeling
+        scrollRef.current.scrollTop = index * ITEM_HEIGHT;
       }
     }
     isInternalUpdate.current = false;
@@ -43,9 +41,9 @@ const WheelPicker = ({
 
   const handleScroll = useCallback(() => {
     if (scrollRef.current) {
-      // Clear previous timeout to debounce the state update for smoothness
       if (scrollTimeout.current) window.clearTimeout(scrollTimeout.current);
 
+      // Reduced delay for a more responsive feel
       scrollTimeout.current = window.setTimeout(() => {
         if (scrollRef.current) {
           const index = Math.round(scrollRef.current.scrollTop / ITEM_HEIGHT);
@@ -55,16 +53,16 @@ const WheelPicker = ({
             onChange(newValue);
           }
         }
-      }, 50); // Small delay makes the "snapping" feel more intentional and less jumpy
+      }, 40); 
     }
   }, [onChange, options, value]);
 
   return (
-    <div className="relative h-[220px] w-14">
+    <div className="relative h-[220px] w-14 overflow-hidden">
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto hide-scrollbar snap-y snap-mandatory scroll-smooth py-[88px]"
+        className="h-full overflow-y-auto overflow-x-hidden hide-scrollbar snap-y snap-mandatory py-[88px]"
         style={{ scrollbarWidth: 'none' }}
       >
         {options.map((opt) => {
@@ -72,9 +70,9 @@ const WheelPicker = ({
           return (
             <div 
               key={opt}
-              className={`h-[44px] flex items-center justify-center snap-center transition-all duration-300 select-none ${
+              className={`h-[44px] w-full flex items-center justify-center snap-center select-none ${
                 isSelected 
-                  ? 'text-white font-bold text-2xl scale-110' 
+                  ? 'text-white font-bold text-2xl' 
                   : 'text-slate-400 text-sm opacity-20'
               }`}
             >
@@ -90,7 +88,6 @@ const WheelPicker = ({
 const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, allTasks, selectedDate }) => {
   // Determine defaults based on the last task of the day
   const getDefaults = () => {
-    // Filter tasks for the selected date and find the one with the latest end time
     const dayTasks = allTasks
       .filter(t => t.createdAt === selectedDate)
       .sort((a, b) => a.endTime.localeCompare(b.endTime));
@@ -105,13 +102,11 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
       startH = h;
       startM = m;
     } else {
-      // Fallback to current time rounded to 5 mins if no tasks exist
       const now = new Date();
       startH = now.getHours().toString().padStart(2, '0');
       startM = (Math.floor(now.getMinutes() / 5) * 5).toString().padStart(2, '0');
     }
 
-    // Default duration: 30 minutes
     const startTotal = parseInt(startH) * 60 + parseInt(startM);
     const endTotal = (startTotal + 30) % 1440;
     const endH = Math.floor(endTotal / 60).toString().padStart(2, '0');
@@ -138,16 +133,13 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
   const minutes = Array.from({ length: 60 }).map((_, i) => i.toString().padStart(2, '0'));
   const durationPresets = ['15m', '30m', '45m', '1h', '1.5h'];
 
-  // Check for time overlap
   const hasOverlap = () => {
     const currentStart = parseInt(startHour) * 60 + parseInt(startMin);
     let currentEnd = parseInt(endHour) * 60 + parseInt(endMin);
-    if (currentEnd <= currentStart) currentEnd += 1440; // Handle overnight
+    if (currentEnd <= currentStart) currentEnd += 1440;
 
     return allTasks.some(t => {
-      // Only check tasks for the same day
       if (t.createdAt !== selectedDate) return false;
-      // Exclude current task if editing
       if (task && t.id === task.id) return false;
       
       const tStart = parseInt(t.startTime.split(':')[0]) * 60 + parseInt(t.startTime.split(':')[1]);
@@ -173,11 +165,8 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
     const startTotal = parseInt(startHour) * 60 + parseInt(startMin);
     const endTotal = (startTotal + mins) % 1440;
     
-    // Smooth transition for the wheels
-    setTimeout(() => {
-      setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
-      setEndMin((endTotal % 60).toString().padStart(2, '0'));
-    }, 0);
+    setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
+    setEndMin((endTotal % 60).toString().padStart(2, '0'));
   };
 
   const handleSuggest = async () => {
