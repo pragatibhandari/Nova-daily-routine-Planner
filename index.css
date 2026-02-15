@@ -1,0 +1,25 @@
+/* ===== Nova Mobile App Feel ===== */
+
+/* Safe areas for iOS notch */
+:root {
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+body {
+  margin: 0;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth scrolling on iOS */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent accidental text selection on UI */
+button {
+  -webkit-user-select: none;
+  user-select: none;
+}

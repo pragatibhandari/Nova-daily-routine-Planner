@@ -10,14 +10,14 @@ export default defineConfig({
       manifest: {
         name: "Nova — Daily Routine Planner",
         short_name: "Nova",
-        description: "A calm daily time-block routine planner.",
         start_url: "/",
         display: "standalone",
-        theme_color: "#0b0f14",
-        background_color: "#0b0f14",
+        background_color: "#0B0F14",
+        theme_color: "#0B0F14",
         icons: [
           { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/pwa-512.png", sizes: "512x512", type: "image/png" }
+          { src: "/pwa-512.png", sizes: "512x512", type: "image/png" },
+          { src: "/pwa-512.png", sizes: "512x512", type: "image/png", purpose: "maskable any" }
         ]
       }
     })
