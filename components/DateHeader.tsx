@@ -42,18 +42,12 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollToDate = (dateStr: string) => {
-    if (scrollRef.current) {
-      const targetEl = scrollRef.current.querySelector(`[data-full="${dateStr}"]`);
-      if (targetEl) {
-        targetEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    }
-  };
-
   useEffect(() => {
     const timer = setTimeout(() => {
-      scrollToDate(selectedDate);
+      const selectedEl = scrollRef.current?.querySelector('[data-selected="true"]');
+      if (selectedEl) {
+        selectedEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
     }, 50);
     return () => clearTimeout(timer);
   }, [selectedDate]);
@@ -63,10 +57,6 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
     const localToday = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
     setSelectedDate(localToday);
     setViewMonth(new Date(now.getFullYear(), now.getMonth(), 1));
-    
-    // Explicitly trigger scroll in case selectedDate was already today
-    // React state update is asynchronous and might bail out if value is same
-    setTimeout(() => scrollToDate(localToday), 10);
   };
 
   // Calendar logic
@@ -198,7 +188,6 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
               <div 
                 key={item.full}
                 data-selected={isSelected}
-                data-full={item.full}
                 onClick={() => setSelectedDate(item.full)}
                 className={`flex flex-col items-center justify-center min-w-[60px] h-20 rounded-xl cursor-pointer transition-all border ${
                   isSelected 
@@ -212,8 +201,8 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
                 <span className={`text-lg font-bold ${isSelected ? '' : 'text-slate-900 dark:text-white'}`}>
                   {item.date}
                 </span>
-                {isToday && (
-                  <div className={`w-1.5 h-1.5 rounded-full mt-1 ${isSelected ? 'bg-white/40' : 'bg-primary'}`}></div>
+                {isToday && !isSelected && (
+                  <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1"></div>
                 )}
               </div>
             );
