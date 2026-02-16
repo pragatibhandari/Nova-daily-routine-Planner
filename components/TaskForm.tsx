@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Task, RepeatOption, Subtask } from '../types';
 import Toggle from './Toggle';
 import { suggestRoutineDescription } from '../geminiService';
@@ -11,6 +11,8 @@ interface TaskFormProps {
   onDelete: (id: string) => void;
   allTasks: Task[];
   selectedDate: string;
+  onEditTask?: (task: Task) => void;
+  onGoToDate?: (date: string) => void;
 }
 
 const WheelPicker = ({ 
@@ -27,12 +29,10 @@ const WheelPicker = ({
   const isInternalUpdate = useRef(false);
   const scrollTimeout = useRef<number | null>(null);
 
-  // Sync scroll position when value changes externally
   useEffect(() => {
     if (scrollRef.current && !isInternalUpdate.current) {
       const index = options.indexOf(value);
       if (index !== -1) {
-        // Use instant scroll for initial sync and external updates to avoid "slow" feeling
         scrollRef.current.scrollTop = index * ITEM_HEIGHT;
       }
     }
@@ -43,7 +43,6 @@ const WheelPicker = ({
     if (scrollRef.current) {
       if (scrollTimeout.current) window.clearTimeout(scrollTimeout.current);
 
-      // Reduced delay for a more responsive feel
       scrollTimeout.current = window.setTimeout(() => {
         if (scrollRef.current) {
           const index = Math.round(scrollRef.current.scrollTop / ITEM_HEIGHT);
@@ -85,8 +84,19 @@ const WheelPicker = ({
   );
 };
 
-const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, allTasks, selectedDate }) => {
-  // Determine defaults based on the last task of the day
+const TaskForm: React.FC<TaskFormProps> = ({ 
+  task, 
+  onSave, 
+  onBack, 
+  onDelete, 
+  allTasks, 
+  selectedDate, 
+  onEditTask, 
+  onGoToDate 
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
   const getDefaults = () => {
     const dayTasks = allTasks
       .filter(t => t.createdAt === selectedDate)
@@ -128,10 +138,97 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
   const [subtasks, setSubtasks] = useState<Subtask[]>(task?.subtasks || []);
   const [newSubtaskText, setNewSubtaskText] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isFutureTasksExpanded, setIsFutureTasksExpanded] = useState(false);
+  
+  // Track if the user has manually touched the end time controls
+  const [isEndTimeManuallySet, setIsEndTimeManuallySet] = useState(task !== null);
+
+  // Sync state and handle AUTO-SCROLL TO TOP
+  useEffect(() => {
+    if (task) {
+      setName(task.name);
+      const [sH, sM] = task.startTime.split(':');
+      const [eH, eM] = task.endTime.split(':');
+      setStartHour(sH);
+      setStartMin(sM);
+      setEndHour(eH);
+      setEndMin(eM);
+      setRepeat(task.repeat);
+      setAlarmEnabled(task.alarmEnabled);
+      setNotes(task.notes);
+      setSubtasks(task.subtasks || []);
+      setIsEndTimeManuallySet(true); 
+    }
+
+    // Always attempt scroll to top when task ID changes or component mounts/updates with task
+    const timer = setTimeout(() => {
+      if (containerRef.current) {
+        containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [task]);
+
+  // Handle Automatic End Time Update (+30 mins)
+  useEffect(() => {
+    if (!isEndTimeManuallySet) {
+      const startMins = parseInt(startHour) * 60 + parseInt(startMin);
+      const endMins = (startMins + 30) % 1440;
+      const h = Math.floor(endMins / 60).toString().padStart(2, '0');
+      const m = (endMins % 60).toString().padStart(2, '0');
+      setEndHour(h);
+      setEndMin(m);
+    }
+  }, [startHour, startMin, isEndTimeManuallySet]);
 
   const hours = Array.from({ length: 24 }).map((_, i) => i.toString().padStart(2, '0'));
   const minutes = Array.from({ length: 60 }).map((_, i) => i.toString().padStart(2, '0'));
   const durationPresets = ['15m', '30m', '45m', '1h', '1.5h'];
+
+  // Case-insensitive matching + Virtual projected occurrences (10 next)
+  const otherOccurrences = useMemo(() => {
+    if (!name.trim()) return [];
+    
+    // 1. Existing entries in allTasks (including current one)
+    const existingMatches = allTasks
+      .filter(t => t.name.toLowerCase() === name.toLowerCase())
+      .map(t => ({ ...t, isVirtual: false }));
+
+    // 2. Generate 10 next projected occurrences if the task repeats
+    const virtuals: any[] = [];
+    if (repeat !== RepeatOption.NONE) {
+      const baseDate = new Date(selectedDate);
+      for (let i = 1; i <= 10; i++) {
+        const nextDate = new Date(baseDate);
+        if (repeat === RepeatOption.DAILY) nextDate.setDate(baseDate.getDate() + i);
+        if (repeat === RepeatOption.WEEKLY) nextDate.setDate(baseDate.getDate() + (i * 7));
+        if (repeat === RepeatOption.MONTHLY) nextDate.setMonth(baseDate.getMonth() + i);
+
+        const dateStr = nextDate.toISOString().split('T')[0];
+        const alreadyExists = existingMatches.some(m => m.createdAt === dateStr);
+        
+        if (!alreadyExists) {
+          virtuals.push({
+            id: `virtual-${i}-${dateStr}`,
+            name: name,
+            startTime: `${startHour}:${startMin}`,
+            endTime: `${endHour}:${endMin}`,
+            createdAt: dateStr,
+            isVirtual: true,
+            repeat: repeat
+          });
+        }
+      }
+    }
+
+    return [...existingMatches, ...virtuals].sort((a, b) => {
+      const d1 = a.createdAt || '';
+      const d2 = b.createdAt || '';
+      const dateCompare = d1.localeCompare(d2);
+      if (dateCompare !== 0) return dateCompare;
+      return a.startTime.localeCompare(b.startTime);
+    });
+  }, [name, allTasks, repeat, selectedDate, startHour, startMin, endHour, endMin]);
 
   const hasOverlap = () => {
     const currentStart = parseInt(startHour) * 60 + parseInt(startMin);
@@ -155,6 +252,9 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
     const e = parseInt(endHour) * 60 + parseInt(endMin);
     let diff = e - s;
     if (diff < 0) diff += 1440;
+    if (diff === 15) return '15m';
+    if (diff === 30) return '30m';
+    if (diff === 45) return '45m';
     if (diff === 60) return '1h';
     if (diff === 90) return '1.5h';
     return `${diff}m`;
@@ -167,6 +267,7 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
     
     setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
     setEndMin((endTotal % 60).toString().padStart(2, '0'));
+    setIsEndTimeManuallySet(true); 
   };
 
   const handleSuggest = async () => {
@@ -181,6 +282,13 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
     if (!newSubtaskText.trim()) return;
     setSubtasks([...subtasks, { id: Math.random().toString(36).substr(2, 9), text: newSubtaskText.trim(), completed: false }]);
     setNewSubtaskText('');
+  };
+
+  const handleOccurrenceClick = (occ: any) => {
+    // Navigating to the date's daily routine as requested
+    if (onGoToDate) {
+      onGoToDate(occ.createdAt);
+    }
   };
 
   const currentDurationLabel = getDurationString();
@@ -210,10 +318,11 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-56 hide-scrollbar scroll-smooth">
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-6 pb-64 hide-scrollbar scroll-smooth">
         {/* Title input */}
         <section className="mt-4">
           <input 
+            ref={titleInputRef}
             className="w-full bg-transparent border-none focus:ring-0 p-0 text-4xl font-bold placeholder:text-white/10 tracking-tight"
             placeholder="Routine Title"
             value={name}
@@ -228,7 +337,6 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
             <button className="text-white/40"><span className="material-symbols-outlined text-lg">schedule</span></button>
           </div>
           <div className="relative bg-card-dark/40 rounded-[32px] p-6 flex items-center justify-center overflow-hidden border border-white/5 shadow-2xl">
-            {/* The Selection Overlay */}
             <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-[52px] bg-white/5 rounded-2xl border border-white/10 pointer-events-none flex items-center justify-center">
               <span className="material-symbols-outlined text-white/20 text-[20px]">trending_flat</span>
             </div>
@@ -240,8 +348,8 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
               </div>
               <div className="w-16"></div>
               <div className="flex items-center">
-                <WheelPicker value={endHour} onChange={setEndHour} options={hours} />
-                <WheelPicker value={endMin} onChange={setEndMin} options={minutes} />
+                <WheelPicker value={endHour} onChange={(val) => { setEndHour(val); setIsEndTimeManuallySet(true); }} options={hours} />
+                <WheelPicker value={endMin} onChange={(val) => { setEndMin(val); setIsEndTimeManuallySet(true); }} options={minutes} />
               </div>
             </div>
           </div>
@@ -337,8 +445,8 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
           </div>
         </section>
 
-        {/* Notes & Description */}
-        <section className="mt-10 mb-12">
+        {/* Notes & Details */}
+        <section className="mt-10 mb-4">
           <div className="flex justify-between items-center mb-4 px-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark">Notes & Details</label>
             <button 
@@ -352,7 +460,7 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
               AI Suggest
             </button>
           </div>
-          <div className="bg-card-dark/40 rounded-[24px] border border-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 transition-all">
+          <div className="bg-card-dark/40 rounded-[24px] border border-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 transition-all mb-4">
             <textarea
               className="w-full bg-transparent border-none focus:ring-0 p-5 text-sm text-white/80 font-medium placeholder:text-white/10 resize-none leading-relaxed min-h-[140px]"
               placeholder="Add any extra details, focus points, or specific instructions for this routine..."
@@ -360,6 +468,71 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onSave, onBack, onDelete, all
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
+
+          {/* Explorer with projected (virtual) occurrences */}
+          {otherOccurrences.length > 0 && (
+            <div className="px-1 pt-2 pb-10">
+              <button 
+                onClick={() => setIsFutureTasksExpanded(!isFutureTasksExpanded)}
+                className="flex items-center gap-2 text-primary font-bold text-[11px] uppercase tracking-[0.1em] bg-primary/10 hover:bg-primary/20 px-5 py-3.5 rounded-2xl transition-all active:scale-95 w-full justify-between shadow-xl shadow-primary/5 border border-primary/20"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[20px]">event_repeat</span>
+                  <span>See other "{name}" routines</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="bg-primary/20 px-2 py-0.5 rounded-lg text-[10px]">{otherOccurrences.length}</span>
+                  <span className={`material-symbols-outlined text-[18px] transition-transform duration-300 ${isFutureTasksExpanded ? 'rotate-180' : ''}`}>expand_more</span>
+                </div>
+              </button>
+
+              {isFutureTasksExpanded && (
+                <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 border-l-2 border-primary/20 ml-5 pl-6 relative">
+                  {otherOccurrences.map((fTask, idx) => {
+                    const taskDate = new Date(fTask.createdAt || '');
+                    const isToday = fTask.createdAt === new Date().toISOString().split('T')[0];
+                    const isCurrentInstance = task?.id === fTask.id;
+                    const isVirtual = fTask.isVirtual;
+                    
+                    return (
+                      <div 
+                        key={fTask.id}
+                        onClick={() => handleOccurrenceClick(fTask)}
+                        className={`relative group cursor-pointer animate-in fade-in duration-300 ${isCurrentInstance ? 'opacity-100' : ''}`}
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        <div className={`absolute -left-[31px] top-6 size-2.5 rounded-full border-2 border-background-dark z-10 transition-colors ${isCurrentInstance || isVirtual ? 'bg-primary' : 'bg-primary/40 group-hover:bg-primary'}`}></div>
+                        
+                        <div className={`bg-card-dark/60 border rounded-[22px] p-4 transition-all active:scale-[0.98] flex items-center justify-between group shadow-lg ${isCurrentInstance ? 'border-primary/60 bg-primary/5' : 'border-white/5 hover:border-primary/40'}`}>
+                          <div className="flex items-center gap-4 min-w-0">
+                            <div className={`flex flex-col items-center justify-center size-12 rounded-xl border border-white/5 transition-colors ${isToday || isCurrentInstance ? 'bg-primary/20 text-primary' : 'bg-white/5 text-neutral-dark group-hover:bg-primary group-hover:text-white'}`}>
+                              <span className="text-[10px] font-black uppercase leading-none mb-0.5">{taskDate.toLocaleDateString('en-US', { month: 'short' })}</span>
+                              <span className="text-sm font-black leading-none">{taskDate.getDate()}</span>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold text-primary uppercase tracking-wider">
+                                {fTask.startTime} - {fTask.endTime}
+                                {isVirtual && <span className="ml-2 bg-primary/20 text-[8px] px-1.5 py-0.5 rounded">PROJECTED</span>}
+                              </p>
+                              <h4 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">
+                                {fTask.name} {isCurrentInstance && <span className="text-[10px] opacity-40 italic ml-1">(Editing)</span>}
+                              </h4>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                             {fTask.repeat !== RepeatOption.NONE && (
+                              <span className="text-[9px] font-black uppercase text-neutral-dark bg-white/5 px-2 py-1 rounded-md border border-white/5">{fTask.repeat}</span>
+                             )}
+                             <span className="material-symbols-outlined text-white/10 group-hover:text-primary transition-colors text-[20px]">chevron_right</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </section>
       </div>
 
