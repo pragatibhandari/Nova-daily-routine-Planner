@@ -23,6 +23,7 @@ export interface Task {
   isActive: boolean;
   repeat: RepeatOption;
   alarmEnabled: boolean;
+  alarmLeadMinutes?: number; // 0 or 5
   notes: string;
   color: string;     // Hex color or Tailwind class
   createdAt: string; // ISO date string YYYY-MM-DD
