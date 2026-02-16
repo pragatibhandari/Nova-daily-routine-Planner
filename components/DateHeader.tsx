@@ -7,6 +7,13 @@ interface DateHeaderProps {
   tasks: Task[];
 }
 
+const getLocalDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, tasks }) => {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => {
@@ -17,12 +24,11 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
   const dates = useMemo(() => {
     const arr = [];
     const today = new Date();
-    // Show 14 days starting from 7 days ago, expanding to 28 days total
     for (let i = -7; i < 21; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       arr.push({
-        full: d.toISOString().split('T')[0],
+        full: getLocalDateString(d),
         day: d.toLocaleDateString('en-US', { weekday: 'short' }),
         date: d.getDate(),
       });
@@ -60,16 +66,13 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
 
   const handleGoToToday = () => {
     const now = new Date();
-    const localToday = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    const localToday = getLocalDateString(now);
     setSelectedDate(localToday);
     setViewMonth(new Date(now.getFullYear(), now.getMonth(), 1));
     
-    // Explicitly trigger scroll in case selectedDate was already today
-    // React state update is asynchronous and might bail out if value is same
     setTimeout(() => scrollToDate(localToday), 10);
   };
 
-  // Calendar logic
   const daysInMonth = useMemo(() => {
     const year = viewMonth.getFullYear();
     const month = viewMonth.getMonth();
@@ -77,11 +80,9 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
     const lastDate = new Date(year, month + 1, 0).getDate();
     
     const days = [];
-    // Padding for previous month
     for (let i = 0; i < firstDay; i++) {
       days.push(null);
     }
-    // Days of current month
     for (let i = 1; i <= lastDate; i++) {
       days.push(new Date(year, month, i));
     }
@@ -89,7 +90,7 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
   }, [viewMonth]);
 
   const hasTasksOnDate = (date: Date) => {
-    const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    const dateStr = getLocalDateString(date);
     return tasks.some(t => {
       const taskDate = new Date(t.createdAt);
       if (t.repeat === RepeatOption.DAILY) return true;
@@ -104,7 +105,7 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
   };
 
   const selectCalendarDate = (date: Date) => {
-    const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    const dateStr = getLocalDateString(date);
     setSelectedDate(dateStr);
     setIsCalendarOpen(false);
   };
@@ -159,7 +160,7 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
             {daysInMonth.map((date, i) => {
               if (!date) return <div key={i} className="aspect-square" />;
               
-              const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+              const dateStr = getLocalDateString(date);
               const isSelected = selectedDate === dateStr;
               const hasTasks = hasTasksOnDate(date);
               const now = new Date();
@@ -191,7 +192,7 @@ const DateHeader: React.FC<DateHeaderProps> = ({ selectedDate, setSelectedDate, 
           {dates.map((item) => {
             const isSelected = selectedDate === item.full;
             const now = new Date();
-            const localToday = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+            const localToday = getLocalDateString(now);
             const isToday = item.full === localToday;
             
             return (
