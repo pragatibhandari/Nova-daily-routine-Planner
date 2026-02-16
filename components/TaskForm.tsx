@@ -140,15 +140,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isFutureTasksExpanded, setIsFutureTasksExpanded] = useState(false);
   
-  // Track if the user has manually touched the end time controls
   const [isEndTimeManuallySet, setIsEndTimeManuallySet] = useState(task !== null);
 
-  // Sync state and handle AUTO-SCROLL TO TOP
   useEffect(() => {
     if (task) {
       setName(task.name);
-      const [sH, sM] = task.startTime.split(':');
-      const [eH, eM] = task.endTime.split(':');
+      const [sH, sM] = task.startTime.split(':')[0] !== undefined ? task.startTime.split(':') : [timeDefaults.startH, timeDefaults.startM];
+      const [eH, eM] = task.endTime.split(':')[0] !== undefined ? task.endTime.split(':') : [timeDefaults.endH, timeDefaults.endM];
       setStartHour(sH);
       setStartMin(sM);
       setEndHour(eH);
@@ -160,7 +158,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
       setIsEndTimeManuallySet(true); 
     }
 
-    // Always attempt scroll to top when task ID changes or component mounts/updates with task
     const timer = setTimeout(() => {
       if (containerRef.current) {
         containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -169,7 +166,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
     return () => clearTimeout(timer);
   }, [task]);
 
-  // Handle Automatic End Time Update (+30 mins)
   useEffect(() => {
     if (!isEndTimeManuallySet) {
       const startMins = parseInt(startHour) * 60 + parseInt(startMin);
@@ -185,31 +181,46 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const minutes = Array.from({ length: 60 }).map((_, i) => i.toString().padStart(2, '0'));
   const durationPresets = ['15m', '30m', '45m', '1h', '1.5h'];
 
-  // Case-insensitive matching + Virtual projected occurrences (10 next)
+  // Enhanced Explorer logic: 2-month window scan
   const otherOccurrences = useMemo(() => {
     if (!name.trim()) return [];
     
-    // 1. Existing entries in allTasks (including current one)
+    // Define the 2-month range
+    const now = new Date(selectedDate);
+    const twoMonthsLater = new Date(now);
+    twoMonthsLater.setMonth(now.getMonth() + 2);
+
+    // 1. Existing explicit entries within 2-month range
     const existingMatches = allTasks
-      .filter(t => t.name.toLowerCase() === name.toLowerCase())
+      .filter(t => 
+        t.name.toLowerCase() === name.toLowerCase() && 
+        new Date(t.createdAt) <= twoMonthsLater
+      )
       .map(t => ({ ...t, isVirtual: false }));
 
-    // 2. Generate 10 next projected occurrences if the task repeats
+    // 2. Generate projected occurrences within 2-month range
     const virtuals: any[] = [];
     if (repeat !== RepeatOption.NONE) {
       const baseDate = new Date(selectedDate);
-      for (let i = 1; i <= 10; i++) {
-        const nextDate = new Date(baseDate);
-        if (repeat === RepeatOption.DAILY) nextDate.setDate(baseDate.getDate() + i);
-        if (repeat === RepeatOption.WEEKLY) nextDate.setDate(baseDate.getDate() + (i * 7));
-        if (repeat === RepeatOption.MONTHLY) nextDate.setMonth(baseDate.getMonth() + i);
+      let nextDate = new Date(baseDate);
+      let iterations = 0;
+      const maxIterations = 365; // safety limit
+
+      while (iterations < maxIterations) {
+        iterations++;
+        if (repeat === RepeatOption.DAILY) nextDate.setDate(nextDate.getDate() + 1);
+        else if (repeat === RepeatOption.WEEKLY) nextDate.setDate(nextDate.getDate() + 7);
+        else if (repeat === RepeatOption.MONTHLY) nextDate.setMonth(nextDate.getMonth() + 1);
+        else break;
+
+        if (nextDate > twoMonthsLater) break;
 
         const dateStr = nextDate.toISOString().split('T')[0];
         const alreadyExists = existingMatches.some(m => m.createdAt === dateStr);
         
         if (!alreadyExists) {
           virtuals.push({
-            id: `virtual-${i}-${dateStr}`,
+            id: `virtual-${iterations}-${dateStr}`,
             name: name,
             startTime: `${startHour}:${startMin}`,
             endTime: `${endHour}:${endMin}`,
@@ -285,7 +296,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
   };
 
   const handleOccurrenceClick = (occ: any) => {
-    // Navigating to the date's daily routine as requested
     if (onGoToDate) {
       onGoToDate(occ.createdAt);
     }
@@ -469,7 +479,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
             />
           </div>
 
-          {/* Explorer with projected (virtual) occurrences */}
+          {/* Explorer with scrollable next 2 months view */}
           {otherOccurrences.length > 0 && (
             <div className="px-1 pt-2 pb-10">
               <button 
@@ -478,16 +488,18 @@ const TaskForm: React.FC<TaskFormProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[20px]">event_repeat</span>
-                  <span>See other "{name}" routines</span>
+                  <span>see other {name} routines</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="bg-primary/20 px-2 py-0.5 rounded-lg text-[10px]">{otherOccurrences.length}</span>
+                  <span className="bg-primary/20 px-2 py-0.5 rounded-lg text-[10px]">{otherOccurrences.length} total</span>
                   <span className={`material-symbols-outlined text-[18px] transition-transform duration-300 ${isFutureTasksExpanded ? 'rotate-180' : ''}`}>expand_more</span>
                 </div>
               </button>
 
               {isFutureTasksExpanded && (
-                <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 border-l-2 border-primary/20 ml-5 pl-6 relative">
+                <div 
+                  className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 border-l-2 border-primary/20 ml-5 pl-6 relative overflow-y-auto hide-scrollbar max-h-[440px]"
+                >
                   {otherOccurrences.map((fTask, idx) => {
                     const taskDate = new Date(fTask.createdAt || '');
                     const isToday = fTask.createdAt === new Date().toISOString().split('T')[0];
@@ -499,7 +511,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                         key={fTask.id}
                         onClick={() => handleOccurrenceClick(fTask)}
                         className={`relative group cursor-pointer animate-in fade-in duration-300 ${isCurrentInstance ? 'opacity-100' : ''}`}
-                        style={{ animationDelay: `${idx * 50}ms` }}
+                        style={{ animationDelay: `${idx * 30}ms` }}
                       >
                         <div className={`absolute -left-[31px] top-6 size-2.5 rounded-full border-2 border-background-dark z-10 transition-colors ${isCurrentInstance || isVirtual ? 'bg-primary' : 'bg-primary/40 group-hover:bg-primary'}`}></div>
                         
@@ -515,7 +527,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                                 {isVirtual && <span className="ml-2 bg-primary/20 text-[8px] px-1.5 py-0.5 rounded">PROJECTED</span>}
                               </p>
                               <h4 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">
-                                {fTask.name} {isCurrentInstance && <span className="text-[10px] opacity-40 italic ml-1">(Editing)</span>}
+                                {fTask.name} {isCurrentInstance && <span className="text-[10px] opacity-40 italic ml-1">(Current)</span>}
                               </h4>
                             </div>
                           </div>
