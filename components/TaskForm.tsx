@@ -29,16 +29,19 @@ const WheelPicker = ({
   const ITEM_HEIGHT = 44; 
   const isInternalUpdate = useRef(false);
   const scrollTimeout = useRef<number | null>(null);
+  const isFirstMount = useRef(true);
 
+  // Handle initial scroll and updates
   useEffect(() => {
     if (scrollRef.current && !isInternalUpdate.current) {
       const index = options.indexOf(value);
       if (index !== -1) {
-        // Change from direct assignment to smooth scrollTo for visual effect
         scrollRef.current.scrollTo({
           top: index * ITEM_HEIGHT,
-          behavior: 'smooth'
+          // Use 'auto' (instant) for first mount to prevent the 00:00 flash
+          behavior: isFirstMount.current ? 'auto' : 'smooth'
         });
+        isFirstMount.current = false;
       }
     }
     isInternalUpdate.current = false;
@@ -102,7 +105,8 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  const getDefaults = () => {
+  // Memoize the default calculation to ensure it doesn't jitter during mount
+  const timeDefaults = useMemo(() => {
     const dayTasks = allTasks
       .filter(t => t.createdAt === selectedDate)
       .sort((a, b) => a.endTime.localeCompare(b.endTime));
@@ -128,14 +132,74 @@ const TaskForm: React.FC<TaskFormProps> = ({
     const endM = (endTotal % 60).toString().padStart(2, '0');
 
     return { startH, startM, endH, endM };
-  };
-
-  const timeDefaults = getDefaults();
+  }, [allTasks, selectedDate]);
 
   const [startHour, setStartHour] = useState(task?.startTime.split(':')[0] || timeDefaults.startH);
   const [startMin, setStartMin] = useState(task?.startTime.split(':')[1] || timeDefaults.startM);
   const [endHour, setEndHour] = useState(task?.endTime.split(':')[0] || timeDefaults.endH);
   const [endMin, setEndMin] = useState(task?.endTime.split(':')[1] || timeDefaults.endM);
+  const [name, setName] = useState(task?.name || '');
+  const [icon, setIcon] = useState(task?.icon || 'event_note');
+  const [repeat, setRepeat] = useState<RepeatOption>(task?.repeat || RepeatOption.NONE);
+  const [alarmEnabled, setAlarmEnabled] = useState(task?.alarmEnabled || false);
+  const [alarmLeadMinutes, setAlarmLeadMinutes] = useState<number>(task?.alarmLeadMinutes || 0);
+  const [notes, setNotes] = useState(task?.notes || '');
+  const [subtasks, setSubtasks] = useState<Subtask[]>(task?.subtasks || []);
+  const [newSubtaskText, setNewSubtaskText] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isFutureTasksExpanded, setIsFutureTasksExpanded] = useState(false);
+  const [isApplyingDuration, setIsApplyingDuration] = useState(false);
+
+  // Recommendations logic with live-filtering and smart sorting
+  const recommendations = useMemo(() => {
+    const taskGroups = new Map<string, { count: number, icon: string, lastUsed: string, duration: number }>();
+    
+    allTasks.forEach(t => {
+      const existing = taskGroups.get(t.name) || { count: 0, icon: t.icon, lastUsed: t.createdAt, duration: 30 };
+      const [sh, sm] = t.startTime.split(':').map(Number);
+      const [eh, em] = t.endTime.split(':').map(Number);
+      let dur = (eh * 60 + em) - (sh * 60 + sm);
+      if (dur < 0) dur += 1440;
+
+      taskGroups.set(t.name, {
+        count: existing.count + 1,
+        icon: t.icon,
+        lastUsed: t.createdAt > existing.lastUsed ? t.createdAt : existing.lastUsed,
+        duration: dur
+      });
+    });
+
+    const searchStr = name.toLowerCase().trim();
+    let entries = Array.from(taskGroups.entries())
+      .map(([name, data]) => ({ name, ...data }));
+
+    if (searchStr.length > 0) {
+      entries = entries.filter(e => e.name.toLowerCase().includes(searchStr) && e.name.toLowerCase() !== searchStr);
+      
+      entries.sort((a, b) => {
+        const aLow = a.name.toLowerCase();
+        const bLow = b.name.toLowerCase();
+        const aStarts = aLow.startsWith(searchStr);
+        const bStarts = bLow.startsWith(searchStr);
+
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        
+        return b.count - a.count;
+      });
+    } else {
+      entries.sort((a, b) => b.count - a.count);
+    }
+
+    return entries.slice(0, 8);
+  }, [allTasks, name]);
+
+  const handleApplyRecommendation = (rec: any) => {
+    setName(rec.name);
+    setIcon(rec.icon);
+    handleDurationSelect(rec.duration);
+    if (titleInputRef.current) titleInputRef.current.focus();
+  };
 
   const getDurationComponents = useCallback(() => {
     const s = parseInt(startHour) * 60 + parseInt(startMin);
@@ -168,22 +232,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
     setEndMin((endTotal % 60).toString().padStart(2, '0'));
   };
 
-  const [name, setName] = useState(task?.name || '');
-  const [repeat, setRepeat] = useState<RepeatOption>(task?.repeat || RepeatOption.NONE);
-  const [alarmEnabled, setAlarmEnabled] = useState(task?.alarmEnabled || false);
-  const [alarmLeadMinutes, setAlarmLeadMinutes] = useState<number>(task?.alarmLeadMinutes || 0);
-  const [notes, setNotes] = useState(task?.notes || '');
-  const [subtasks, setSubtasks] = useState<Subtask[]>(task?.subtasks || []);
-  const [newSubtaskText, setNewSubtaskText] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [isFutureTasksExpanded, setIsFutureTasksExpanded] = useState(false);
-  
-  const [isApplyingDuration, setIsApplyingDuration] = useState(false);
-  const [isEndTimeManuallySet, setIsEndTimeManuallySet] = useState(!!task);
-
   useEffect(() => {
     if (task) {
       setName(task.name);
+      setIcon(task.icon);
       const sParts = task.startTime.split(':');
       const eParts = task.endTime.split(':');
       if (sParts.length === 2) {
@@ -199,11 +251,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
       setAlarmLeadMinutes(task.alarmLeadMinutes || 0);
       setNotes(task.notes);
       setSubtasks(task.subtasks || []);
-      setIsEndTimeManuallySet(true); 
     }
   }, [task]);
 
-  // Strict time validation: End time must be at least 1 minute after start time
   useEffect(() => {
     const startTotal = parseInt(startHour) * 60 + parseInt(startMin);
     const endTotal = parseInt(endHour) * 60 + parseInt(endMin);
@@ -230,7 +280,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const isCustomDuration = !basePresets.some(p => p.value === currentTotalMins);
 
   const handleDurationSelect = (mins: number) => {
-    // Trigger pulse visual effect
     setIsApplyingDuration(true);
     setTimeout(() => setIsApplyingDuration(false), 600);
 
@@ -239,7 +288,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
     
     setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
     setEndMin((endTotal % 60).toString().padStart(2, '0'));
-    setIsEndTimeManuallySet(true); 
   };
 
   const otherOccurrences = useMemo(() => {
@@ -366,15 +414,40 @@ const TaskForm: React.FC<TaskFormProps> = ({
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto px-6 pb-64 hide-scrollbar scroll-smooth">
+      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-64 hide-scrollbar scroll-smooth">
         <section className="mt-4">
-          <input 
-            ref={titleInputRef}
-            className="w-full bg-transparent border-none focus:ring-0 p-0 text-4xl font-bold placeholder:text-white/10 tracking-tight"
-            placeholder="Routine Title"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <div className="flex items-center gap-4 mb-2">
+            <div className="size-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+              <span className="material-symbols-outlined text-3xl">{icon}</span>
+            </div>
+            <input 
+              ref={titleInputRef}
+              className="flex-1 bg-transparent border-none focus:ring-0 p-0 text-4xl font-bold placeholder:text-white/10 tracking-tight"
+              placeholder="Routine Title"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          {recommendations.length > 0 && (
+            <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-500 w-full overflow-hidden">
+              <label className="text-[10px] font-black uppercase tracking-widest text-primary/60 mb-3 block px-1">
+                {name.trim() ? 'Matching history' : 'Suggestions'}
+              </label>
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2 w-full max-w-full">
+                {recommendations.map((rec) => (
+                  <button
+                    key={rec.name}
+                    onClick={() => handleApplyRecommendation(rec)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-card-dark border border-white/5 rounded-2xl whitespace-nowrap hover:border-primary/40 transition-all active:scale-95 shadow-sm shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-primary text-[18px]">{rec.icon}</span>
+                    <span className="text-xs font-bold text-white/80">{rec.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="mt-10">
@@ -396,13 +469,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
               <div className="flex items-center">
                 <WheelPicker 
                   value={endHour} 
-                  onChange={(val) => { setEndHour(val); setIsEndTimeManuallySet(true); }} 
+                  onChange={(val) => { setEndHour(val); }} 
                   options={hours} 
                   isPulse={isApplyingDuration}
                 />
                 <WheelPicker 
                   value={endMin} 
-                  onChange={(val) => { setEndMin(val); setIsEndTimeManuallySet(true); }} 
+                  onChange={(val) => { setEndMin(val); }} 
                   options={minutes} 
                   isPulse={isApplyingDuration}
                 />
@@ -591,7 +664,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
             name: name.trim() || 'Untitled Routine',
             startTime: `${startHour}:${startMin}`,
             endTime: `${endHour}:${endMin}`,
-            icon: task?.icon || 'event_note',
+            icon: icon,
             isActive: task?.isActive ?? true,
             repeat,
             alarmEnabled,

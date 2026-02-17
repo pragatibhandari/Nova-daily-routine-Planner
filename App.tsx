@@ -5,27 +5,32 @@ import DateHeader from './components/DateHeader';
 import TimelineCard from './components/TimelineCard';
 import TaskForm from './components/TaskForm';
 
+const getLocalDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('timeline');
   const [tasks, setTasks] = useState<Task[]>(() => {
     const saved = localStorage.getItem('nova_tasks');
     if (saved) return JSON.parse(saved);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString(new Date());
     return INITIAL_TASKS.map(t => ({ ...t, createdAt: todayStr, subtasks: [] }));
   });
 
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    return getLocalDateString(new Date());
   });
 
-  // Keep track of current time to update 'ongoing' status dynamically
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
-    }, 30000); // Update every 30 seconds
+    }, 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -45,7 +50,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkAlarms = () => {
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = getLocalDateString(now);
       const currentHHmm = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
       tasks.forEach(t => {
@@ -66,25 +71,8 @@ const App: React.FC = () => {
             audioRef.current?.play().catch(e => console.warn("Audio play blocked", e));
           }
         }
-
-        if (t.alarmLeadMinutes) {
-          const [h, m] = t.startTime.split(':').map(Number);
-          const leadTime = new Date(now);
-          leadTime.setHours(h, m, 0, 0);
-          leadTime.setMinutes(leadTime.getMinutes() - t.alarmLeadMinutes);
-          const leadHHmm = `${leadTime.getHours().toString().padStart(2, '0')}:${leadTime.getMinutes().toString().padStart(2, '0')}`;
-          if (leadHHmm === currentHHmm) {
-            const rungId = `${t.id}_lead_${currentHHmm}`;
-            if (lastRungRef.current !== rungId && !ringingTaskId) {
-              lastRungRef.current = rungId;
-              setRingingTaskId(t.id);
-              audioRef.current?.play().catch(e => console.warn("Audio play blocked", e));
-            }
-          }
-        }
       });
     };
-
     checkAlarms();
   }, [tasks, ringingTaskId, now]);
 
@@ -106,11 +94,17 @@ const App: React.FC = () => {
       if (task.repeat === RepeatOption.WEEKLY) return taskDate.getDay() === targetDate.getDay();
       if (task.repeat === RepeatOption.MONTHLY) return taskDate.getDate() === targetDate.getDate();
       return task.createdAt === selectedDate;
-    }).sort((a, b) => a.startTime.localeCompare(b.startTime));
+    }).sort((a, b) => {
+      // Primary sort: Start Time
+      const startCompare = a.startTime.localeCompare(b.startTime);
+      if (startCompare !== 0) return startCompare;
+      // Secondary sort: Finish Time (earliest finish first for same-start overlaps)
+      return a.endTime.localeCompare(b.endTime);
+    });
   }, [tasks, selectedDate]);
 
   const activeTaskId = useMemo(() => {
-    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    const todayStr = getLocalDateString(now);
     if (selectedDate !== todayStr) return null;
 
     const currentMins = now.getHours() * 60 + now.getMinutes();
@@ -120,7 +114,12 @@ const App: React.FC = () => {
       const [eh, em] = t.endTime.split(':').map(Number);
       const startMins = sh * 60 + sm;
       const endMins = eh * 60 + em;
-      return currentMins >= startMins && currentMins < endMins;
+
+      if (endMins > startMins) {
+        return currentMins >= startMins && currentMins < endMins;
+      } else {
+        return currentMins >= startMins || currentMins < endMins;
+      }
     })?.id || null;
   }, [filteredTasks, selectedDate, now]);
 
@@ -137,13 +136,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (view === 'timeline' && isAutoScrollPending.current) {
       const timer = setTimeout(() => {
-        // Try to find an element with data-ongoing="true" (can be a task div or a gap div)
         const ongoingEl = document.querySelector('[data-ongoing="true"]');
         if (ongoingEl) {
           ongoingEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           isAutoScrollPending.current = false;
         } else if (filteredTasks.length > 0) {
-          // Fallback to first task if none ongoing
           const el = document.querySelector(`[data-task-id="${filteredTasks[0].id}"]`);
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -156,10 +153,8 @@ const App: React.FC = () => {
   }, [view, selectedDate, filteredTasks]);
 
   const handleSetSelectedDate = (date: string) => {
-    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-    if (date === todayStr) {
-      isAutoScrollPending.current = true;
-    }
+    const todayStr = getLocalDateString(now);
+    if (date === todayStr) isAutoScrollPending.current = true;
     setSelectedDate(date);
   };
 
@@ -179,8 +174,6 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-
   const handleEditTask = (task: Task) => {
     setSelectedTask(task);
     setView('edit');
@@ -197,12 +190,12 @@ const App: React.FC = () => {
     setView('edit');
   };
 
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+
   const handleSaveTask = (task: Task) => {
     setTasks(prev => {
       const exists = prev.find(t => t.id === task.id);
-      if (exists) {
-        return prev.map(t => t.id === task.id ? task : t);
-      }
+      if (exists) return prev.map(t => t.id === task.id ? task : t);
       return [...prev, { ...task, createdAt: selectedDate }];
     });
     setView('timeline');
@@ -214,45 +207,23 @@ const App: React.FC = () => {
   };
 
   const renderTimeline = () => {
-    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    const todayStr = getLocalDateString(now);
     const nowTotal = now.getHours() * 60 + now.getMinutes();
-
     const lastTask = filteredTasks[filteredTasks.length - 1];
     const isLateEnd = lastTask ? parseInt(lastTask.endTime.split(':')[0]) >= 22 : false;
 
     return (
       <div className="flex flex-col min-h-screen pb-32 bg-background-light dark:bg-background-dark">
-        <DateHeader 
-          selectedDate={selectedDate} 
-          setSelectedDate={handleSetSelectedDate} 
-          tasks={tasks}
-        />
-        
+        <DateHeader selectedDate={selectedDate} setSelectedDate={handleSetSelectedDate} tasks={tasks} />
         <main className="flex-1 px-6 py-4 space-y-4">
-          {ringingTaskId && !filteredTasks.some(t => t.id === ringingTaskId) && (
-            <div className="bg-yellow-400/20 border border-yellow-400/30 rounded-2xl p-4 mb-4 flex items-center justify-between animate-in slide-in-from-top-4">
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-yellow-400 animate-bell-shake fill-1">notifications_active</span>
-                <span className="text-sm font-bold text-yellow-100">Routine Alarm Ringing</span>
-              </div>
-              <div className="flex gap-2">
-                 <button onClick={handleSnoozeAlarm} className="text-[10px] font-bold uppercase bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">Snooze</button>
-                 <button onClick={handleDismissAlarm} className="text-[10px] font-bold uppercase bg-yellow-400 text-background-dark px-3 py-1.5 rounded-lg">Stop</button>
-              </div>
-            </div>
-          )}
-
           <h2 className="text-lg font-bold text-neutral-dark mb-2 uppercase tracking-widest text-[10px]">
             {selectedDate === todayStr ? "Today's Schedule" : `Schedule for ${selectedDate}`}
           </h2>
-          
           {filteredTasks.length === 0 ? (
             <div className="py-20 text-center space-y-4 opacity-50">
               <span className="material-symbols-outlined text-6xl">event_busy</span>
               <p className="font-medium">No routine tasks for this day</p>
-              <button onClick={handleAddNewTask} className="text-primary font-bold text-sm underline">
-                Add a task
-              </button>
+              <button onClick={handleAddNewTask} className="text-primary font-bold text-sm underline">Add a task</button>
             </div>
           ) : (
             <>
@@ -265,8 +236,10 @@ const App: React.FC = () => {
                   const [nH, nM] = nextTask.startTime.split(':').map(Number);
                   nextStartMinutes = nH * 60 + nM;
                 }
-                const hasGap = nextTask && nextStartMinutes !== null && (nextStartMinutes - currentEndTotal >= 1);
+                const isOvernight = parseInt(task.endTime.split(':')[0]) < parseInt(task.startTime.split(':')[0]);
+                const hasGap = !isOvernight && nextTask && nextStartMinutes !== null && (nextStartMinutes - currentEndTotal >= 1);
                 const hasOverlap = nextTask && nextStartMinutes !== null && (nextStartMinutes < currentEndTotal);
+                
                 const isOngoing = task.id === activeTaskId;
                 const isGapOngoing = selectedDate === todayStr && hasGap && nextStartMinutes !== null && (nowTotal >= currentEndTotal && nowTotal < nextStartMinutes);
 
@@ -288,7 +261,7 @@ const App: React.FC = () => {
                        <div onClick={() => handleEditTask(nextTask)} className="ml-5 flex items-center justify-between py-2.5 px-4 border border-dashed border-red-500/10 rounded-2xl cursor-pointer transition-all opacity-60 hover:opacity-100 active:scale-[0.98]">
                         <div className="flex items-center gap-2">
                           <span className="material-symbols-outlined text-[18px] text-red-500/60">error_outline</span>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-dark">Schedule is overlapping</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-dark">Schedule Overlap detected</p>
                         </div>
                       </div>
                     )}
@@ -302,16 +275,13 @@ const App: React.FC = () => {
                             : 'border-slate-200 dark:border-white/5 opacity-50 hover:opacity-100'
                         }`}
                       >
-                        {/* Pointing/Highlighting ongoing indicator for free time */}
                         <div className={`absolute -left-5 top-0 bottom-0 w-1 rounded-full transition-all duration-500 ${isGapOngoing ? 'bg-primary shadow-[0_0_8px_rgba(37,71,244,0.6)] scale-y-110' : 'bg-transparent'}`}></div>
-                        
                         <div className="flex items-center gap-2">
                           <span className={`material-symbols-outlined text-[18px] ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>
                             {isGapOngoing ? 'progress_activity' : 'history_toggle_off'}
                           </span>
                           <p className={`text-[10px] font-bold uppercase tracking-wider ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>
                             {task.endTime} - {nextTask.startTime} • {calculateDuration(task.endTime, nextTask.startTime)} Free Time
-                            {isGapOngoing && <span className="ml-2 bg-primary/10 px-1.5 py-0.5 rounded-md text-[8px] font-black animate-pulse">Ongoing</span>}
                           </p>
                         </div>
                         <span className={`material-symbols-outlined text-sm ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>add_circle</span>
@@ -320,43 +290,24 @@ const App: React.FC = () => {
                   </React.Fragment>
                 );
               })}
-              
               <div className="flex flex-col items-center justify-center py-12 space-y-3 opacity-40">
-                <span className="material-symbols-outlined text-3xl">
-                  {isLateEnd ? 'nights_stay' : 'bedtime'}
-                </span>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em]">
-                  {isLateEnd ? 'Good night, Sleep tight' : 'Rest of the day looks clear'}
-                </p>
-                <div className="w-px h-12 bg-gradient-to-b from-slate-400 to-transparent"></div>
+                <span className="material-symbols-outlined text-3xl">{isLateEnd ? 'nights_stay' : 'bedtime'}</span>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em]">{isLateEnd ? 'Good night, Sleep tight' : 'Rest of the day looks clear'}</p>
               </div>
             </>
           )}
         </main>
-
         <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-background-dark/95 backdrop-blur-lg border-t border-slate-200 dark:border-white/5 pb-8 pt-4">
           <div className="max-w-md mx-auto flex justify-between items-center px-6">
-            <div className="flex flex-1 justify-center">
-              <button onClick={() => setView('timeline')} className={`flex flex-col items-center gap-1 group ${view === 'timeline' ? 'text-primary' : 'text-neutral-dark'}`}>
-                <div className={`flex h-8 w-12 items-center justify-center rounded-full transition-colors ${view === 'timeline' ? 'bg-primary/10' : 'group-hover:bg-primary/5'}`}>
-                  <span className={`material-symbols-outlined ${view === 'timeline' ? 'fill-1' : ''}`}>schedule</span>
-                </div>
-                <p className="text-[10px] font-bold uppercase tracking-tighter">Timeline</p>
-              </button>
-            </div>
-            <div className="flex flex-1 justify-center -mt-8">
-              <button onClick={handleAddNewTask} className="size-16 bg-primary text-white rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center active:scale-95 transition-transform border-4 border-white dark:border-background-dark">
-                <span className="material-symbols-outlined text-3xl">add</span>
-              </button>
-            </div>
-            <div className="flex flex-1 justify-center">
-              <button onClick={() => setView('settings')} className={`flex flex-col items-center gap-1 group ${view === 'settings' ? 'text-primary' : 'text-neutral-dark'}`}>
-                <div className={`flex h-8 w-12 items-center justify-center rounded-full transition-colors ${view === 'settings' ? 'bg-primary/10' : 'group-hover:bg-primary/5'}`}>
-                  <span className={`material-symbols-outlined ${view === 'settings' ? 'fill-1' : ''}`}>settings</span>
-                </div>
-                <p className="text-[10px] font-bold uppercase tracking-tighter">Settings</p>
-              </button>
-            </div>
+            <button onClick={() => setView('timeline')} className={`flex flex-col items-center gap-1 flex-1 ${view === 'timeline' ? 'text-primary' : 'text-neutral-dark'}`}>
+              <div className={`flex h-8 w-12 items-center justify-center rounded-full ${view === 'timeline' ? 'bg-primary/10' : ''}`}><span className="material-symbols-outlined">schedule</span></div>
+              <p className="text-[10px] font-bold uppercase tracking-tighter">Timeline</p>
+            </button>
+            <button onClick={handleAddNewTask} className="size-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white dark:border-background-dark"><span className="material-symbols-outlined text-3xl">add</span></button>
+            <button onClick={() => setView('settings')} className={`flex flex-col items-center gap-1 flex-1 ${view === 'settings' ? 'text-primary' : 'text-neutral-dark'}`}>
+              <div className={`flex h-8 w-12 items-center justify-center rounded-full ${view === 'settings' ? 'bg-primary/10' : ''}`}><span className="material-symbols-outlined">settings</span></div>
+              <p className="text-[10px] font-bold uppercase tracking-tighter">Settings</p>
+            </button>
           </div>
         </nav>
       </div>
@@ -368,24 +319,12 @@ const App: React.FC = () => {
       <div className="w-full max-w-md bg-background-light dark:bg-background-dark min-h-screen relative border-x border-slate-200 dark:border-slate-800">
         {view === 'timeline' && renderTimeline()}
         {view === 'edit' && (
-          <TaskForm 
-            task={selectedTask} 
-            onSave={handleSaveTask} 
-            onBack={() => setView('timeline')}
-            onDelete={handleDeleteTask}
-            allTasks={tasks}
-            selectedDate={selectedDate}
-            onEditTask={handleEditTask}
-            onGoToDate={handleGoToDate}
-          />
+          <TaskForm task={selectedTask} onSave={handleSaveTask} onBack={() => setView('timeline')} onDelete={handleDeleteTask} allTasks={tasks} selectedDate={selectedDate} onEditTask={handleEditTask} onGoToDate={handleGoToDate} />
         )}
         {view === 'settings' && (
           <div className="p-8 text-center animate-in fade-in zoom-in-95 duration-300">
             <h2 className="text-2xl font-bold mb-4">Settings</h2>
-            <p className="text-neutral-dark">Personalize your routine experience here.</p>
-            <button onClick={() => setView('timeline')} className="mt-8 bg-primary text-white px-6 py-2 rounded-xl font-bold active:scale-95">
-              Back to Timeline
-            </button>
+            <button onClick={() => setView('timeline')} className="mt-8 bg-primary text-white px-6 py-2 rounded-xl font-bold">Back to Timeline</button>
           </div>
         )}
       </div>
