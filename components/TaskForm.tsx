@@ -14,38 +14,61 @@ interface TaskFormProps {
   onGoToDate?: (date: string) => void;
 }
 
+const cleanTitle = (str: string) => {
+  if (!str) return '';
+  return str
+    .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+const getLocalDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const WheelPicker = ({ 
   value, 
   onChange, 
   options,
-  isPulse = false
+  isPulse = false,
+  disabledOptions = []
 }: { 
   value: string, 
   onChange: (v: string) => void, 
   options: string[],
-  isPulse?: boolean
+  isPulse?: boolean,
+  disabledOptions?: string[]
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const ITEM_HEIGHT = 44; 
   const isInternalUpdate = useRef(false);
   const scrollTimeout = useRef<number | null>(null);
-  const isFirstMount = useRef(true);
+  const isInitialized = useRef(false);
 
-  // Handle initial scroll and updates
+  const scrollToValue = useCallback((val: string, behavior: ScrollBehavior = 'auto') => {
+    if (scrollRef.current) {
+      const index = options.indexOf(val);
+      if (index === -1) return;
+      
+      scrollRef.current.scrollTo({
+        top: index * ITEM_HEIGHT,
+        behavior
+      });
+    }
+  }, [options]);
+
   useEffect(() => {
-    if (scrollRef.current && !isInternalUpdate.current) {
-      const index = options.indexOf(value);
-      if (index !== -1) {
-        scrollRef.current.scrollTo({
-          top: index * ITEM_HEIGHT,
-          // Use 'auto' (instant) for first mount to prevent the 00:00 flash
-          behavior: isFirstMount.current ? 'auto' : 'smooth'
-        });
-        isFirstMount.current = false;
-      }
+    if (!isInitialized.current) {
+      scrollToValue(value, 'auto');
+      isInitialized.current = true;
+    } else if (!isInternalUpdate.current) {
+      scrollToValue(value, 'smooth');
     }
     isInternalUpdate.current = false;
-  }, [value, options]);
+  }, [value, scrollToValue]);
 
   const handleScroll = useCallback(() => {
     if (scrollRef.current) {
@@ -53,34 +76,46 @@ const WheelPicker = ({
 
       scrollTimeout.current = window.setTimeout(() => {
         if (scrollRef.current) {
-          const index = Math.round(scrollRef.current.scrollTop / ITEM_HEIGHT);
-          const newValue = options[index];
-          if (newValue && newValue !== value) {
-            isInternalUpdate.current = true;
-            onChange(newValue);
+          const scrollTop = scrollRef.current.scrollTop;
+          const index = Math.round(scrollTop / ITEM_HEIGHT);
+          const actualValue = options[index];
+          
+          if (actualValue && actualValue !== value) {
+            if (disabledOptions.includes(actualValue)) {
+              scrollToValue(value, 'smooth');
+            } else {
+              isInternalUpdate.current = true;
+              onChange(actualValue);
+            }
           }
         }
-      }, 40); 
+      }, 50); 
     }
-  }, [onChange, options, value]);
+  }, [onChange, value, options, disabledOptions, scrollToValue]);
 
   return (
-    <div className={`relative h-[220px] w-14 overflow-hidden transition-all duration-500 ${isPulse ? 'scale-110' : 'scale-100'}`}>
+    <div className={`relative h-[180px] w-12 overflow-hidden transition-transform duration-500 ${isPulse ? 'scale-110' : 'scale-100'}`}>
+      <div className="absolute top-1/2 left-0 right-0 h-[44px] -translate-y-1/2 bg-primary/5 dark:bg-primary/10 rounded-lg pointer-events-none border-y border-primary/10 dark:border-white/5" />
+      
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden hide-scrollbar snap-y snap-mandatory py-[88px]"
-        style={{ scrollbarWidth: 'none' }}
+        className="h-full overflow-y-auto overflow-x-hidden hide-scrollbar snap-y snap-mandatory py-[68px] overscroll-contain"
+        style={{ scrollbarWidth: 'none', fontVariantNumeric: 'tabular-nums', willChange: 'transform' }}
       >
-        {options.map((opt) => {
+        {options.map((opt, i) => {
           const isSelected = value === opt;
+          const isDisabled = disabledOptions.includes(opt);
+          
           return (
             <div 
-              key={opt}
+              key={`${opt}-${i}`}
               className={`h-[44px] w-full flex items-center justify-center snap-center select-none transition-all duration-300 ${
                 isSelected 
-                  ? 'text-white font-bold text-2xl' 
-                  : 'text-slate-400 text-sm opacity-20'
+                  ? 'text-slate-900 dark:text-white font-bold text-xl scale-110' 
+                  : isDisabled 
+                    ? 'text-red-500/20 text-xs grayscale blur-[0.5px]'
+                    : 'text-slate-400 text-sm opacity-20'
               } ${isSelected && isPulse ? 'text-primary' : ''}`}
             >
               {opt}
@@ -103,9 +138,8 @@ const TaskForm: React.FC<TaskFormProps> = ({
   onGoToDate 
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Memoize the default calculation to ensure it doesn't jitter during mount
   const timeDefaults = useMemo(() => {
     const dayTasks = allTasks
       .filter(t => t.createdAt === selectedDate)
@@ -147,51 +181,140 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [subtasks, setSubtasks] = useState<Subtask[]>(task?.subtasks || []);
   const [newSubtaskText, setNewSubtaskText] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [isFutureTasksExpanded, setIsFutureTasksExpanded] = useState(false);
   const [isApplyingDuration, setIsApplyingDuration] = useState(false);
 
-  // Recommendations logic with live-filtering and smart sorting
-  const recommendations = useMemo(() => {
-    const taskGroups = new Map<string, { count: number, icon: string, lastUsed: string, duration: number }>();
+  const hours = Array.from({ length: 24 }).map((_, i) => i.toString().padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }).map((_, i) => i.toString().padStart(2, '0'));
+
+  const validateAndSetEndTime = useCallback((h: string, m: string) => {
+    const startTotal = parseInt(startHour) * 60 + parseInt(startMin);
+    let endTotal = parseInt(h) * 60 + parseInt(m);
     
+    if (endTotal <= startTotal) {
+      endTotal = (startTotal + 1) % 1440;
+    }
+
+    setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
+    setEndMin((endTotal % 60).toString().padStart(2, '0'));
+  }, [startHour, startMin]);
+
+  const handleStartHourChange = (newH: string) => {
+    const sMins = parseInt(startHour) * 60 + parseInt(startMin);
+    const eMins = parseInt(endHour) * 60 + parseInt(endMin);
+    let duration = eMins - sMins;
+    if (duration <= 0) duration += 1440;
+
+    setStartHour(newH);
+    const newStartTotal = parseInt(newH) * 60 + parseInt(startMin);
+    const newEndTotal = (newStartTotal + duration) % 1440;
+    setEndHour(Math.floor(newEndTotal / 60).toString().padStart(2, '0'));
+    setEndMin((newEndTotal % 60).toString().padStart(2, '0'));
+  };
+
+  const handleStartMinChange = (newM: string) => {
+    const sMins = parseInt(startHour) * 60 + parseInt(startMin);
+    const eMins = parseInt(endHour) * 60 + parseInt(endMin);
+    let duration = eMins - sMins;
+    if (duration <= 0) duration += 1440;
+
+    setStartMin(newM);
+    const newStartTotal = parseInt(startHour) * 60 + parseInt(newM);
+    const newEndTotal = (newStartTotal + duration) % 1440;
+    setEndHour(Math.floor(newEndTotal / 60).toString().padStart(2, '0'));
+    setEndMin((newEndTotal % 60).toString().padStart(2, '0'));
+  };
+
+  const lockedEndHours = useMemo(() => {
+    const startH = parseInt(startHour);
+    return hours.filter(h => parseInt(h) < startH);
+  }, [startHour, hours]);
+
+  const lockedEndMinutes = useMemo(() => {
+    const startH = parseInt(startHour);
+    const endH = parseInt(endHour);
+    const startM = parseInt(startMin);
+    
+    if (endH === startH) {
+      return minutes.filter(m => parseInt(m) <= startM);
+    }
+    return [];
+  }, [startHour, endHour, startMin, minutes]);
+
+  const getDurationComponents = useCallback(() => {
+    const s = parseInt(startHour) * 60 + parseInt(startMin);
+    const e = parseInt(endHour) * 60 + parseInt(endMin);
+    let diff = e - s;
+    if (diff <= 0) diff += 1440;
+    const h = Math.floor(diff / 60);
+    const m = diff % 60;
+    return { h, m, total: diff };
+  }, [startHour, startMin, endHour, endMin]);
+
+  const { h: curH, m: curM, total: currentTotalMins } = getDurationComponents();
+
+  const recommendations = useMemo(() => {
+    const taskGroups = new Map<string, { count: number, icon: string, lastUsed: string, duration: number, originalName: string }>();
     allTasks.forEach(t => {
-      const existing = taskGroups.get(t.name) || { count: 0, icon: t.icon, lastUsed: t.createdAt, duration: 30 };
+      const base = cleanTitle(t.name);
+      if (!base) return;
+      const existing = taskGroups.get(base) || { count: 0, icon: t.icon, lastUsed: t.createdAt, duration: 30, originalName: t.name };
       const [sh, sm] = t.startTime.split(':').map(Number);
       const [eh, em] = t.endTime.split(':').map(Number);
       let dur = (eh * 60 + em) - (sh * 60 + sm);
       if (dur < 0) dur += 1440;
-
-      taskGroups.set(t.name, {
+      taskGroups.set(base, {
         count: existing.count + 1,
         icon: t.icon,
         lastUsed: t.createdAt > existing.lastUsed ? t.createdAt : existing.lastUsed,
-        duration: dur
+        duration: dur,
+        originalName: t.name
       });
     });
-
-    const searchStr = name.toLowerCase().trim();
-    let entries = Array.from(taskGroups.entries())
-      .map(([name, data]) => ({ name, ...data }));
-
-    if (searchStr.length > 0) {
-      entries = entries.filter(e => e.name.toLowerCase().includes(searchStr) && e.name.toLowerCase() !== searchStr);
-      
-      entries.sort((a, b) => {
-        const aLow = a.name.toLowerCase();
-        const bLow = b.name.toLowerCase();
-        const aStarts = aLow.startsWith(searchStr);
-        const bStarts = bLow.startsWith(searchStr);
-
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        
-        return b.count - a.count;
-      });
-    } else {
-      entries.sort((a, b) => b.count - a.count);
-    }
-
+    const searchStr = cleanTitle(name);
+    let entries = Array.from(taskGroups.entries()).map(([base, data]) => ({ name: data.originalName, ...data }));
+    if (searchStr.length > 0) entries = entries.filter(e => cleanTitle(e.name).includes(searchStr));
+    entries.sort((a, b) => b.count - a.count);
     return entries.slice(0, 8);
+  }, [allTasks, name]);
+
+  const siblingTasks = useMemo(() => {
+    const currentCleanName = cleanTitle(name);
+    if (!currentCleanName) return [];
+    
+    const nowStr = getLocalDateString(new Date());
+    const currentHHmm = `${new Date().getHours().toString().padStart(2, '0')}:${new Date().getMinutes().toString().padStart(2, '0')}`;
+
+    const instances: Array<{ date: string, startTime: string, endTime: string, id: string }> = [];
+
+    allTasks.forEach(t => {
+      if (cleanTitle(t.name) !== currentCleanName) return;
+      const baseDate = new Date(t.createdAt);
+      for (let i = 0; i < 60; i++) {
+        const d = new Date(baseDate);
+        d.setDate(baseDate.getDate() + i);
+        const dateStr = getLocalDateString(d);
+        let isMatch = false;
+        if (t.repeat === RepeatOption.NONE) isMatch = i === 0;
+        else if (t.repeat === RepeatOption.DAILY) isMatch = true;
+        else if (t.repeat === RepeatOption.WEEKLY) isMatch = d.getDay() === baseDate.getDay();
+        else if (t.repeat === RepeatOption.MONTHLY) isMatch = d.getDate() === baseDate.getDate();
+
+        if (isMatch) {
+          if (dateStr > nowStr || (dateStr === nowStr && t.startTime >= currentHHmm)) {
+             if (!instances.some(inst => inst.date === dateStr && inst.startTime === t.startTime)) {
+                instances.push({ date: dateStr, startTime: t.startTime, endTime: t.endTime, id: `${t.id}_${dateStr}` });
+             }
+          }
+        }
+      }
+    });
+
+    return instances
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.startTime.localeCompare(b.startTime);
+      })
+      .slice(0, 20);
   }, [allTasks, name]);
 
   const handleApplyRecommendation = (rec: any) => {
@@ -201,151 +324,30 @@ const TaskForm: React.FC<TaskFormProps> = ({
     if (titleInputRef.current) titleInputRef.current.focus();
   };
 
-  const getDurationComponents = useCallback(() => {
-    const s = parseInt(startHour) * 60 + parseInt(startMin);
-    const e = parseInt(endHour) * 60 + parseInt(endMin);
-    let diff = e - s;
-    if (diff <= 0) diff += 1440;
-    
-    const h = Math.floor(diff / 60);
-    const m = diff % 60;
-    return { h, m, total: diff };
-  }, [startHour, startMin, endHour, endMin]);
-
-  const { h, m, total: currentTotalMins } = getDurationComponents();
-
-  const handleStartHourChange = (newH: string) => {
-    const duration = currentTotalMins;
-    setStartHour(newH);
-    const startTotal = parseInt(newH) * 60 + parseInt(startMin);
-    const endTotal = (startTotal + duration) % 1440;
-    setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
-    setEndMin((endTotal % 60).toString().padStart(2, '0'));
-  };
-
-  const handleStartMinChange = (newM: string) => {
-    const duration = currentTotalMins;
-    setStartMin(newM);
-    const startTotal = parseInt(startHour) * 60 + parseInt(newM);
-    const endTotal = (startTotal + duration) % 1440;
-    setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
-    setEndMin((endTotal % 60).toString().padStart(2, '0'));
-  };
-
-  useEffect(() => {
-    if (task) {
-      setName(task.name);
-      setIcon(task.icon);
-      const sParts = task.startTime.split(':');
-      const eParts = task.endTime.split(':');
-      if (sParts.length === 2) {
-        setStartHour(sParts[0]);
-        setStartMin(sParts[1]);
-      }
-      if (eParts.length === 2) {
-        setEndHour(eParts[0]);
-        setEndMin(eParts[1]);
-      }
-      setRepeat(task.repeat);
-      setAlarmEnabled(task.alarmEnabled);
-      setAlarmLeadMinutes(task.alarmLeadMinutes || 0);
-      setNotes(task.notes);
-      setSubtasks(task.subtasks || []);
+  const durationPresets = useMemo(() => {
+    const fixed = [
+      { label: '1m', value: 1 },
+      { label: '15m', value: 15 },
+      { label: '30m', value: 30 },
+      { label: '45m', value: 45 },
+    ];
+    const isMatched = fixed.some(p => p.value === currentTotalMins);
+    if (!isMatched) {
+      const label = curH > 0 ? `${curH}h${curM > 0 ? ` ${curM}m` : ''}` : `${curM}m`;
+      return [...fixed, { label, value: currentTotalMins }];
+    } else {
+      return [...fixed, { label: '1h', value: 60 }];
     }
-  }, [task]);
-
-  useEffect(() => {
-    const startTotal = parseInt(startHour) * 60 + parseInt(startMin);
-    const endTotal = parseInt(endHour) * 60 + parseInt(endMin);
-    
-    if (endTotal === startTotal) {
-      const newEndMins = (startTotal + 1) % 1440;
-      setEndHour(Math.floor(newEndMins / 60).toString().padStart(2, '0'));
-      setEndMin((newEndMins % 60).toString().padStart(2, '0'));
-    }
-  }, [startHour, startMin, endHour, endMin]);
-
-  const hours = Array.from({ length: 24 }).map((_, i) => i.toString().padStart(2, '0'));
-  const minutes = Array.from({ length: 60 }).map((_, i) => i.toString().padStart(2, '0'));
-
-  const basePresets = [
-    { label: '1m', value: 1 },
-    { label: '15m', value: 15 },
-    { label: '30m', value: 30 },
-    { label: '45m', value: 45 },
-    { label: '1h', value: 60 }
-  ];
-
-  const isPresetActive = (val: number) => currentTotalMins === val;
-  const isCustomDuration = !basePresets.some(p => p.value === currentTotalMins);
+  }, [currentTotalMins, curH, curM]);
 
   const handleDurationSelect = (mins: number) => {
     setIsApplyingDuration(true);
     setTimeout(() => setIsApplyingDuration(false), 600);
-
     const startTotal = parseInt(startHour) * 60 + parseInt(startMin);
     const endTotal = (startTotal + mins) % 1440;
-    
     setEndHour(Math.floor(endTotal / 60).toString().padStart(2, '0'));
     setEndMin((endTotal % 60).toString().padStart(2, '0'));
   };
-
-  const otherOccurrences = useMemo(() => {
-    if (!name.trim()) return [];
-    
-    const now = new Date(selectedDate);
-    const twoMonthsLater = new Date(now);
-    twoMonthsLater.setMonth(now.getMonth() + 2);
-
-    const existingMatches = allTasks
-      .filter(t => 
-        t.name.toLowerCase() === name.toLowerCase() && 
-        new Date(t.createdAt) <= twoMonthsLater &&
-        t.id !== task?.id
-      )
-      .map(t => ({ ...t, isVirtual: false }));
-
-    const virtuals: any[] = [];
-    if (repeat !== RepeatOption.NONE) {
-      const baseDate = new Date(selectedDate);
-      let nextDate = new Date(baseDate);
-      let iterations = 0;
-      const maxIterations = 365; 
-
-      while (iterations < maxIterations) {
-        iterations++;
-        if (repeat === RepeatOption.DAILY) nextDate.setDate(nextDate.getDate() + 1);
-        else if (repeat === RepeatOption.WEEKLY) nextDate.setDate(nextDate.getDate() + 7);
-        else if (repeat === RepeatOption.MONTHLY) nextDate.setMonth(nextDate.getMonth() + 1);
-        else break;
-
-        if (nextDate > twoMonthsLater) break;
-
-        const dateStr = nextDate.toISOString().split('T')[0];
-        const alreadyExists = existingMatches.some(m => m.createdAt === dateStr);
-        
-        if (!alreadyExists) {
-          virtuals.push({
-            id: `virtual-${iterations}-${dateStr}`,
-            name: name,
-            startTime: `${startHour}:${startMin}`,
-            endTime: `${endHour}:${endMin}`,
-            createdAt: dateStr,
-            isVirtual: true,
-            repeat: repeat
-          });
-        }
-      }
-    }
-
-    return [...existingMatches, ...virtuals].sort((a, b) => {
-      const d1 = a.createdAt || '';
-      const d2 = b.createdAt || '';
-      const dateCompare = d1.localeCompare(d2);
-      if (dateCompare !== 0) return dateCompare;
-      return a.startTime.localeCompare(b.startTime);
-    });
-  }, [name, allTasks, repeat, selectedDate, startHour, startMin, endHour, endMin, task?.id]);
 
   const handleSuggest = async () => {
     if (!name) return;
@@ -361,88 +363,56 @@ const TaskForm: React.FC<TaskFormProps> = ({
     setNewSubtaskText('');
   };
 
-  const handleOccurrenceClick = (occ: any) => {
-    if (onGoToDate) {
-      onGoToDate(occ.createdAt);
-    }
-  };
-
-  const renderDurationLabel = (label: string) => {
-    const match = label.match(/(\d+(?:\.\d+)?)([mh])/);
-    if (!match) return label;
-    return (
-      <span className="flex items-baseline gap-0.5">
-        <span>{match[1]}</span>
-        <span className="text-[8px] font-black uppercase opacity-60 leading-none">{match[2]}</span>
-      </span>
-    );
-  };
-
-  const getCustomLabel = () => {
-    if (h > 0) {
-      return (
-        <span className="flex items-baseline gap-0.5">
-          <span>{h}</span><span className="text-[8px] font-black uppercase opacity-60 leading-none">h</span>
-          {m > 0 && <><span className="ml-1">{m}</span><span className="text-[8px] font-black uppercase opacity-60 leading-none">m</span></>}
-        </span>
-      );
-    }
-    return (
-      <span className="flex items-baseline gap-0.5">
-        <span>{m}</span><span className="text-[8px] font-black uppercase opacity-60 leading-none">m</span>
-      </span>
-    );
+  const formatDateLabel = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
   };
 
   return (
-    <div className="flex flex-col h-full bg-background-dark font-display text-white overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center p-4 justify-between sticky top-0 z-40 bg-background-dark/80 backdrop-blur-md">
-        <button onClick={onBack} className="size-10 flex items-center justify-center hover:bg-white/5 rounded-full transition-colors active:scale-90">
+    <div className="flex flex-col h-full bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white overflow-hidden w-full max-w-full">
+      <div className="flex items-center p-4 justify-between sticky top-0 z-40 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md w-full overflow-hidden">
+        <button onClick={onBack} className="size-10 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/5 rounded-full transition-colors active:scale-90 shrink-0">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
-        <div className="flex items-center gap-2 bg-card-dark px-4 py-2 rounded-xl text-[12px] font-bold shadow-lg border border-white/5">
-          <span className="material-symbols-outlined text-[18px] text-primary">calendar_today</span>
-          <span>{new Date(selectedDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</span>
+        <div className="flex items-center gap-2 bg-white dark:bg-card-dark px-4 py-2 rounded-xl text-[12px] font-bold shadow-lg border border-slate-200 dark:border-white/5 overflow-hidden">
+          <span className="material-symbols-outlined text-[18px] text-primary shrink-0">calendar_today</span>
+          <span className="truncate">{new Date(selectedDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</span>
         </div>
-        <div>
-          {task && (
-            <button onClick={() => onDelete(task.id)} className="size-10 flex items-center justify-center rounded-full hover:bg-red-500/10 text-red-500 transition-colors">
-              <span className="material-symbols-outlined">delete</span>
-            </button>
-          )}
-        </div>
+        {task ? (
+          <button onClick={() => onDelete(task.id)} className="size-10 flex items-center justify-center rounded-full hover:bg-red-500/10 text-red-500 transition-colors shrink-0">
+            <span className="material-symbols-outlined">delete</span>
+          </button>
+        ) : <div className="size-10 shrink-0" />}
       </div>
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-64 hide-scrollbar scroll-smooth">
-        <section className="mt-4">
-          <div className="flex items-center gap-4 mb-2">
+      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-64 hide-scrollbar scroll-smooth w-full">
+        <section className="mt-4 w-full">
+          <div className="flex items-start gap-4 mb-2 w-full">
             <div className="size-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
               <span className="material-symbols-outlined text-3xl">{icon}</span>
             </div>
-            <input 
+            <textarea 
               ref={titleInputRef}
-              className="flex-1 bg-transparent border-none focus:ring-0 p-0 text-4xl font-bold placeholder:text-white/10 tracking-tight"
+              rows={2}
+              maxLength={30}
+              className="flex-1 bg-transparent border-none focus:ring-0 p-0 pt-1 text-3xl font-bold placeholder:text-slate-300 dark:placeholder:text-white/10 tracking-tight text-slate-900 dark:text-white resize-none leading-tight overflow-hidden"
               placeholder="Routine Title"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
-
           {recommendations.length > 0 && (
             <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-500 w-full overflow-hidden">
-              <label className="text-[10px] font-black uppercase tracking-widest text-primary/60 mb-3 block px-1">
-                {name.trim() ? 'Matching history' : 'Suggestions'}
-              </label>
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2 w-full max-w-full">
+              <label className="text-[10px] font-black uppercase tracking-widest text-primary/60 mb-3 block px-1">Recent history</label>
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
                 {recommendations.map((rec) => (
                   <button
-                    key={rec.name}
+                    key={rec.originalName}
                     onClick={() => handleApplyRecommendation(rec)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-card-dark border border-white/5 rounded-2xl whitespace-nowrap hover:border-primary/40 transition-all active:scale-95 shadow-sm shrink-0"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-card-dark border border-slate-200 dark:border-white/5 rounded-2xl whitespace-nowrap hover:border-primary/40 transition-all active:scale-95 shadow-sm shrink-0"
                   >
                     <span className="material-symbols-outlined text-primary text-[18px]">{rec.icon}</span>
-                    <span className="text-xs font-bold text-white/80">{rec.name}</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-white/80">{rec.name}</span>
                   </button>
                 ))}
               </div>
@@ -450,81 +420,76 @@ const TaskForm: React.FC<TaskFormProps> = ({
           )}
         </section>
 
-        <section className="mt-10">
+        <section className="mt-10 w-full">
           <div className="flex items-center justify-between mb-4 px-1">
             <h3 className="text-xl font-bold">Time</h3>
-            <span className="material-symbols-outlined text-white/40 text-lg">schedule</span>
+            <span className="material-symbols-outlined text-neutral-dark dark:text-white/40 text-lg">schedule</span>
           </div>
-          <div className="relative bg-card-dark/40 rounded-[32px] p-6 flex items-center justify-center border border-white/5 shadow-2xl overflow-visible">
-            <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-[52px] bg-white/5 rounded-2xl border border-white/10 pointer-events-none flex items-center justify-center z-0">
-              <span className={`material-symbols-outlined text-white/20 text-[20px] transition-all duration-500 ${isApplyingDuration ? 'text-primary scale-125' : ''}`}>trending_flat</span>
-            </div>
-            
-            <div className="flex items-center justify-center z-10 w-full relative">
-              <div className="flex items-center">
+          
+          <div className="flex items-center gap-3 w-full overflow-hidden">
+            <div className="flex-1 bg-white dark:bg-card-dark/40 rounded-[32px] p-4 border border-slate-200 dark:border-white/5 shadow-xl flex flex-col items-center min-w-0">
+              <span className="text-[9px] font-black uppercase tracking-widest text-neutral-dark mb-2 whitespace-nowrap">Start Time</span>
+              <div className="flex items-center justify-center w-full">
                 <WheelPicker value={startHour} onChange={handleStartHourChange} options={hours} />
                 <WheelPicker value={startMin} onChange={handleStartMinChange} options={minutes} />
               </div>
-              <div className="w-16"></div>
-              <div className="flex items-center">
+            </div>
+
+            <div className="flex flex-col items-center justify-center gap-2 shrink-0">
+              <div className={`px-3 py-1.5 rounded-full bg-primary text-white text-[10px] font-black uppercase tracking-widest whitespace-nowrap shadow-lg transition-all duration-500 ${isApplyingDuration ? 'scale-110 shadow-primary/40' : 'scale-100'}`}>
+                {curH > 0 ? `${curH}h ${curM}m` : `${curM}m`}
+              </div>
+              <div className="h-20 w-[1px] bg-gradient-to-b from-transparent via-slate-200 dark:via-white/10 to-transparent"></div>
+            </div>
+
+            <div className="flex-1 bg-white dark:bg-card-dark/40 rounded-[32px] p-4 border border-slate-200 dark:border-white/5 shadow-xl flex flex-col items-center min-w-0">
+              <span className="text-[9px] font-black uppercase tracking-widest text-neutral-dark mb-2 whitespace-nowrap">End Time</span>
+              <div className="flex items-center justify-center w-full">
                 <WheelPicker 
                   value={endHour} 
-                  onChange={(val) => { setEndHour(val); }} 
+                  onChange={(val) => validateAndSetEndTime(val, endMin)} 
                   options={hours} 
                   isPulse={isApplyingDuration}
+                  disabledOptions={lockedEndHours}
                 />
                 <WheelPicker 
                   value={endMin} 
-                  onChange={(val) => { setEndMin(val); }} 
+                  onChange={(val) => validateAndSetEndTime(endHour, val)} 
                   options={minutes} 
                   isPulse={isApplyingDuration}
+                  disabledOptions={lockedEndMinutes}
                 />
               </div>
             </div>
           </div>
         </section>
 
-        <section className="mt-8">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark mb-4 block px-1">Duration</label>
-          <div className="bg-card-dark rounded-full p-1.5 flex items-center justify-between border border-white/5 shadow-inner">
-            {basePresets.map((preset) => (
+        <section className="mt-8 w-full overflow-hidden">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark mb-4 block px-1">Duration Presets</label>
+          <div className="bg-white dark:bg-card-dark rounded-full p-1.5 flex items-center justify-between border border-slate-200 dark:border-white/5 shadow-inner w-full">
+            {durationPresets.map((preset) => (
               <button
                 key={preset.label}
                 onClick={() => handleDurationSelect(preset.value)}
                 className={`h-11 flex-1 rounded-full text-[10px] font-black uppercase transition-all duration-300 flex items-center justify-center ${
-                  isPresetActive(preset.value)
-                  ? 'bg-primary text-white shadow-[0_8px_16px_-4px_rgba(37,71,244,0.4)] scale-105' 
-                  : 'text-white/20 hover:text-white/50'
+                  currentTotalMins === preset.value ? 'bg-primary text-white shadow-lg' : 'text-slate-400 dark:text-white/20 hover:text-primary dark:hover:text-white/50'
                 }`}
               >
-                {renderDurationLabel(preset.label)}
+                {preset.label}
               </button>
             ))}
-            
-            <button
-              onClick={() => isCustomDuration ? null : handleDurationSelect(90)}
-              className={`h-11 flex-1 rounded-full text-[10px] font-black uppercase transition-all duration-300 flex items-center justify-center ${
-                isCustomDuration 
-                ? 'bg-primary text-white shadow-[0_8px_16px_-4px_rgba(37,71,244,0.4)] scale-105' 
-                : 'text-white/20 hover:text-white/50'
-              }`}
-            >
-              {isCustomDuration ? getCustomLabel() : renderDurationLabel('1.5h')}
-            </button>
           </div>
         </section>
 
-        <section className="mt-10">
+        <section className="mt-10 w-full overflow-hidden">
           <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark mb-4 block px-1">Frequency</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-2 w-full">
             {[RepeatOption.NONE, RepeatOption.DAILY, RepeatOption.WEEKLY, RepeatOption.MONTHLY].map(opt => (
               <button 
                 key={opt}
                 onClick={() => setRepeat(opt)}
                 className={`py-3.5 rounded-2xl border text-[10px] font-bold transition-all ${
-                  repeat === opt 
-                    ? 'bg-primary text-white border-transparent shadow-lg shadow-primary/20' 
-                    : 'border-white/5 bg-card-dark text-slate-500 hover:text-white/60'
+                  repeat === opt ? 'bg-primary text-white border-transparent shadow-lg' : 'border-slate-200 dark:border-white/5 bg-white dark:bg-card-dark text-slate-500 hover:text-primary dark:hover:text-white/60'
                 }`}
               >
                 {opt}
@@ -533,54 +498,80 @@ const TaskForm: React.FC<TaskFormProps> = ({
           </div>
         </section>
 
-        <section className="mt-8 space-y-3">
-          <div className={`rounded-3xl p-5 flex items-center justify-between transition-all border ${alarmEnabled ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-card-dark border-white/5'}`}>
-            <div className="flex items-center gap-4">
-              <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${alarmEnabled ? 'bg-yellow-500/40 text-yellow-100 scale-105 shadow-lg shadow-yellow-500/10' : 'bg-white/5 text-slate-400'}`}>
-                <span className={`material-symbols-outlined text-2xl ${alarmEnabled ? 'fill-1' : ''}`}>notifications_active</span>
+        <section className="mt-10 w-full overflow-hidden">
+          <div className={`rounded-3xl p-5 transition-all border ${alarmEnabled ? 'bg-yellow-500/10 border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.05)]' : 'bg-white dark:bg-card-dark border-slate-200 dark:border-white/5'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-4 overflow-hidden">
+                <div className={`size-12 rounded-2xl flex items-center justify-center transition-all shrink-0 ${alarmEnabled ? 'bg-yellow-500 text-slate-900 dark:text-background-dark shadow-xl' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
+                  <span className={`material-symbols-outlined text-2xl ${alarmEnabled ? 'fill-1' : ''}`}>notifications_active</span>
+                </div>
+                <div className="overflow-hidden">
+                  <p className={`font-bold text-base truncate ${alarmEnabled ? 'text-yellow-600 dark:text-yellow-500' : 'text-slate-900 dark:text-white'}`}>Routine Alarm</p>
+                  <p className="text-slate-500 text-[11px] font-medium uppercase tracking-tighter truncate">Notification system</p>
+                </div>
               </div>
-              <div>
-                <p className={`font-bold text-base ${alarmEnabled ? 'text-yellow-100' : 'text-white'}`}>Routine Alarm</p>
-                <p className="text-slate-500 text-[11px] font-medium uppercase tracking-tighter">Smart Reminders</p>
-              </div>
+              <Toggle checked={alarmEnabled} onChange={(val) => {
+                setAlarmEnabled(val);
+                if (!val) setAlarmLeadMinutes(0);
+              }} />
             </div>
-            <Toggle checked={alarmEnabled} onChange={setAlarmEnabled} />
+
+            {alarmEnabled && (
+              <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
+                <label className="text-[9px] font-black uppercase tracking-[0.2em] text-yellow-600 dark:text-yellow-500/80 mb-3 block px-1">Remind me</label>
+                <div className="flex gap-2 w-full">
+                  {[0, 5, 10].map((mins) => (
+                    <button
+                      key={mins}
+                      onClick={() => setAlarmLeadMinutes(mins)}
+                      className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase border transition-all ${
+                        alarmLeadMinutes === mins 
+                          ? 'bg-yellow-500 text-slate-900 dark:text-background-dark border-transparent shadow-lg scale-[1.03] z-10' 
+                          : 'border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 text-slate-500 hover:text-slate-900 dark:hover:text-white/60'
+                      }`}
+                    >
+                      {mins === 0 ? 'At Start' : `${mins}m Before`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="mt-10">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark mb-5 block px-1">Sub-routines</label>
-          <div className="space-y-3 mb-6">
+        <section className="mt-10 w-full overflow-hidden">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark mb-5 block px-1">Steps / Sub-routines</label>
+          <div className="space-y-3 mb-6 w-full">
             {subtasks.map(s => (
-              <div key={s.id} className="bg-card-dark/60 p-4 rounded-2xl flex items-center justify-between border border-white/5 group transition-all hover:border-white/20">
-                <span className="text-sm text-white/80 font-medium">{s.text}</span>
-                <button onClick={() => setSubtasks(subtasks.filter(x => x.id !== s.id))} className="text-white/10 hover:text-red-400 transition-colors">
+              <div key={s.id} className="bg-white dark:bg-card-dark/60 p-4 rounded-2xl flex items-center justify-between border border-slate-200 dark:border-white/5 group transition-all hover:border-primary/30 w-full overflow-hidden">
+                <span className="text-sm text-slate-700 dark:text-white/80 font-medium truncate flex-1 pr-4">{s.text}</span>
+                <button onClick={() => setSubtasks(subtasks.filter(x => x.id !== s.id))} className="text-slate-300 hover:text-red-400 transition-colors shrink-0">
                   <span className="material-symbols-outlined text-xl">close</span>
                 </button>
               </div>
             ))}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 w-full">
             <input 
-              className="flex-1 bg-card-dark border border-white/5 rounded-2xl px-6 text-sm text-white h-16 outline-none focus:ring-2 focus:ring-primary/30 font-medium placeholder:text-white/10 transition-all"
+              className="flex-1 bg-white dark:bg-card-dark border border-slate-200 dark:border-white/5 rounded-2xl px-6 text-sm text-slate-900 dark:text-white h-16 outline-none focus:ring-2 focus:ring-primary/30 font-medium placeholder:text-slate-300 dark:placeholder:text-white/10 w-full min-w-0"
               placeholder="Add a step..."
               value={newSubtaskText}
               onChange={(e) => setNewSubtaskText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
             />
-            <button onClick={handleAddSubtask} className="size-16 bg-primary text-white rounded-2xl flex items-center justify-center active:scale-95 shadow-xl shadow-primary/20 hover:brightness-110 transition-all">
+            <button onClick={handleAddSubtask} className="size-16 bg-primary text-white rounded-2xl flex items-center justify-center active:scale-95 shadow-xl transition-all shrink-0">
               <span className="material-symbols-outlined text-3xl">add</span>
             </button>
           </div>
         </section>
 
-        <section className="mt-10 mb-4">
-          <div className="flex justify-between items-center mb-4 px-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark">Notes & Details</label>
+        <section className="mt-10 mb-4 w-full overflow-hidden">
+          <div className="flex justify-between items-center mb-4 px-1 gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark whitespace-nowrap">Notes & Guidance</label>
             <button 
               onClick={handleSuggest} 
               disabled={isAiLoading || !name}
-              className={`text-primary text-[10px] font-bold uppercase flex items-center gap-1.5 bg-primary/10 px-4 py-2 rounded-full border border-primary/10 transition-all ${isAiLoading ? 'opacity-50' : 'hover:bg-primary/20'}`}
+              className={`text-primary text-[10px] font-bold uppercase flex items-center gap-1.5 bg-primary/10 px-4 py-2 rounded-full border border-primary/10 transition-all shrink-0 ${isAiLoading ? 'opacity-50' : 'hover:bg-primary/20'}`}
             >
               <span className={`material-symbols-outlined text-[16px] ${isAiLoading ? 'animate-spin' : ''}`}>
                 {isAiLoading ? 'progress_activity' : 'auto_awesome'}
@@ -588,76 +579,53 @@ const TaskForm: React.FC<TaskFormProps> = ({
               AI Suggest
             </button>
           </div>
-          <div className="bg-card-dark/40 rounded-[24px] border border-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 transition-all mb-4">
+          <div className="bg-white dark:bg-card-dark/40 rounded-[24px] border border-slate-200 dark:border-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 transition-all mb-4 w-full">
             <textarea
-              className="w-full bg-transparent border-none focus:ring-0 p-5 text-sm text-white/80 font-medium placeholder:text-white/10 resize-none leading-relaxed min-h-[140px]"
+              className="w-full bg-transparent border-none focus:ring-0 p-5 text-sm text-slate-700 dark:text-white/80 font-medium placeholder:text-slate-300 dark:placeholder:text-white/10 resize-none leading-relaxed min-h-[140px]"
               placeholder="Add extra details..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-
-          {/* Explorer Section */}
-          {name.trim().length > 0 && (
-            <div className="px-1 pt-2 pb-10">
-              {otherOccurrences.length > 0 ? (
-                <>
-                  <button 
-                    onClick={() => setIsFutureTasksExpanded(!isFutureTasksExpanded)}
-                    className="flex items-center gap-2 text-primary font-bold text-[11px] uppercase tracking-[0.1em] bg-primary/10 hover:bg-primary/20 px-5 py-3.5 rounded-2xl transition-all active:scale-95 w-full justify-between shadow-xl shadow-primary/5 border border-primary/20"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[20px]">event_repeat</span>
-                      <span>see other "{name}" routines</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="bg-primary/20 px-2 py-0.5 rounded-lg text-[10px]">{otherOccurrences.length} total</span>
-                      <span className={`material-symbols-outlined text-[18px] transition-transform duration-300 ${isFutureTasksExpanded ? 'rotate-180' : ''}`}>expand_more</span>
-                    </div>
-                  </button>
-
-                  {isFutureTasksExpanded && (
-                    <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 border-l-2 border-primary/20 ml-5 pl-6 max-h-[440px] overflow-y-auto hide-scrollbar">
-                      {otherOccurrences.map((fTask, idx) => {
-                        const taskDate = new Date(fTask.createdAt || '');
-                        return (
-                          <div 
-                            key={fTask.id}
-                            onClick={() => handleOccurrenceClick(fTask)}
-                            className="relative group cursor-pointer"
-                          >
-                            <div className="absolute -left-[31px] top-6 size-2.5 rounded-full border-2 border-background-dark bg-primary/40 group-hover:bg-primary z-10 transition-colors"></div>
-                            <div className="bg-card-dark/60 border border-white/5 rounded-[22px] p-4 flex items-center justify-between hover:border-primary/40 transition-all">
-                              <div className="flex items-center gap-4">
-                                <div className="flex flex-col items-center justify-center size-12 rounded-xl border border-white/5 bg-white/5 text-neutral-dark group-hover:bg-primary group-hover:text-white transition-colors">
-                                  <span className="text-[10px] font-black uppercase leading-none mb-0.5">{taskDate.toLocaleDateString('en-US', { month: 'short' })}</span>
-                                  <span className="text-sm font-black leading-none">{taskDate.getDate()}</span>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-bold text-primary uppercase tracking-wider">{fTask.startTime} - {fTask.endTime}</p>
-                                  <h4 className="text-sm font-bold text-white group-hover:text-primary transition-colors">{fTask.name}</h4>
-                                </div>
-                              </div>
-                              <span className="material-symbols-outlined text-white/10 group-hover:text-primary transition-colors text-[20px]">chevron_right</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="py-8 text-center animate-in fade-in duration-300 border border-dashed border-white/5 rounded-[22px] opacity-30">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">no other {name} recurrences</p>
-                </div>
-              )}
-            </div>
-          )}
         </section>
+
+        {siblingTasks.length > 0 && (
+          <section className="mt-10 mb-20 animate-in fade-in slide-in-from-bottom-4 duration-700 w-full overflow-hidden">
+            <div className="flex items-center justify-between mb-4 px-1 gap-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-dark truncate max-w-[70%]">
+                Upcoming "{name || 'Routine'}"
+              </label>
+              <span className="text-[10px] font-black text-primary/40 uppercase tracking-widest whitespace-nowrap">{siblingTasks.length} Found</span>
+            </div>
+            <div className="bg-white dark:bg-card-dark/20 rounded-[32px] border border-slate-200 dark:border-white/5 overflow-hidden max-h-[350px] overflow-y-auto hide-scrollbar scroll-smooth w-full">
+              {siblingTasks.map((sibling) => (
+                <button
+                  key={sibling.id}
+                  onClick={() => onGoToDate?.(sibling.date)}
+                  className="w-full flex items-center justify-between p-5 border-b border-slate-100 dark:border-white/5 last:border-none hover:bg-slate-50 dark:hover:bg-white/5 transition-all group active:scale-[0.98] overflow-hidden"
+                >
+                  <div className="flex flex-col items-start text-left gap-1 overflow-hidden">
+                    <p className="text-sm font-bold text-slate-800 dark:text-white group-hover:text-primary transition-colors truncate w-full">
+                      {formatDateLabel(sibling.date)}
+                    </p>
+                    <p className="text-[10px] font-black text-neutral-dark uppercase tracking-wider truncate w-full">
+                      {sibling.startTime} — {sibling.endTime}
+                    </p>
+                  </div>
+                  <span className="material-symbols-outlined text-neutral-dark/30 dark:text-white/20 group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0">
+                    arrow_forward_ios
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-4 text-center text-[10px] font-medium text-neutral-dark/40 uppercase tracking-[0.15em] w-full">
+              Showing next 20 scheduled instances
+            </p>
+          </section>
+        )}
       </div>
 
-      {/* Save Button */}
-      <div className="p-6 pb-12 bg-background-dark/90 backdrop-blur-3xl border-t border-white/5 fixed bottom-0 left-0 right-0 z-50 flex items-center justify-center">
+      <div className="p-6 pb-12 bg-white/90 dark:bg-background-dark/90 backdrop-blur-3xl border-t border-slate-200 dark:border-white/5 fixed bottom-0 left-0 right-0 z-50 flex items-center justify-center overflow-hidden">
         <button 
           onClick={() => onSave({
             id: task?.id || Math.random().toString(36).substr(2, 9),
@@ -674,10 +642,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
             color: task?.color || '#2547f4',
             createdAt: task?.createdAt || selectedDate
           })}
-          className="w-full max-w-md h-16 bg-primary hover:brightness-110 text-white font-bold rounded-[22px] shadow-[0_15px_30px_-10px_rgba(37,71,244,0.5)] transition-all active:scale-[0.97] flex items-center justify-center gap-3"
+          className="w-full max-w-md h-16 bg-primary hover:brightness-110 text-white font-bold rounded-[22px] shadow-[0_15px_30px_-10px_rgba(37,71,244,0.5)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 overflow-hidden"
         >
-          <span className="material-symbols-outlined text-2xl">{task ? 'check_circle' : 'add_circle'}</span>
-          <span className="text-lg tracking-tight">{task ? 'Save Routine' : 'Add to Schedule'}</span>
+          <span className="material-symbols-outlined text-2xl shrink-0">{task ? 'check_circle' : 'add_circle'}</span>
+          <span className="text-lg tracking-tight truncate">{task ? 'Update Routine' : 'Create Routine'}</span>
         </button>
       </div>
     </div>
