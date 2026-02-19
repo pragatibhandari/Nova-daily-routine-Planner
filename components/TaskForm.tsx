@@ -270,11 +270,17 @@ const TaskForm: React.FC<TaskFormProps> = ({
         originalName: t.name
       });
     });
+    
     const searchStr = cleanTitle(name);
     let entries = Array.from(taskGroups.entries()).map(([base, data]) => ({ name: data.originalName, ...data }));
-    if (searchStr.length > 0) entries = entries.filter(e => cleanTitle(e.name).includes(searchStr));
-    entries.sort((a, b) => b.count - a.count);
-    return entries.slice(0, 8);
+    
+    if (searchStr.length > 0) {
+      entries = entries.filter(e => cleanTitle(e.name).includes(searchStr));
+      return entries.sort((a, b) => b.count - a.count);
+    } else {
+      entries.sort((a, b) => b.count - a.count);
+      return entries.slice(0, 10);
+    }
   }, [allTasks, name]);
 
   const siblingTasks = useMemo(() => {
@@ -394,7 +400,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
             <textarea 
               ref={titleInputRef}
               rows={2}
-              maxLength={30}
+              maxLength={25}
               className="flex-1 bg-transparent border-none focus:ring-0 p-0 pt-1 text-3xl font-bold placeholder:text-slate-300 dark:placeholder:text-white/10 tracking-tight text-slate-900 dark:text-white resize-none leading-tight overflow-hidden"
               placeholder="Routine Title"
               value={name}
@@ -428,7 +434,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
           
           <div className="flex items-center gap-3 w-full overflow-hidden">
             <div className="flex-1 bg-white dark:bg-card-dark/40 rounded-[32px] p-4 border border-slate-200 dark:border-white/5 shadow-xl flex flex-col items-center min-w-0">
-              <span className="text-[9px] font-black uppercase tracking-widest text-neutral-dark mb-2 whitespace-nowrap">Start Time</span>
               <div className="flex items-center justify-center w-full">
                 <WheelPicker value={startHour} onChange={handleStartHourChange} options={hours} />
                 <WheelPicker value={startMin} onChange={handleStartMinChange} options={minutes} />
@@ -443,7 +448,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
             </div>
 
             <div className="flex-1 bg-white dark:bg-card-dark/40 rounded-[32px] p-4 border border-slate-200 dark:border-white/5 shadow-xl flex flex-col items-center min-w-0">
-              <span className="text-[9px] font-black uppercase tracking-widest text-neutral-dark mb-2 whitespace-nowrap">End Time</span>
               <div className="flex items-center justify-center w-full">
                 <WheelPicker 
                   value={endHour} 

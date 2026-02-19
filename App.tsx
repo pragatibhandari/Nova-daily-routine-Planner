@@ -225,78 +225,121 @@ const App: React.FC = () => {
             {selectedDate === todayStr ? "Today's Schedule" : `Schedule for ${selectedDate}`}
           </h2>
           {filteredTasks.length === 0 ? (
-            <div className="py-20 text-center space-y-4 opacity-50">
+            <div className="py-20 text-center space-y-4 opacity-40">
               <span className="material-symbols-outlined text-6xl">event_busy</span>
               <p className="font-medium">No routines found for this day</p>
               <button onClick={handleAddNewTask} className="text-primary font-bold text-sm underline">Start fresh</button>
             </div>
           ) : (
-            filteredTasks.map((task, index) => {
-              const nextTask = filteredTasks[index + 1];
-              const [curH, curM] = task.endTime.split(':').map(Number);
-              const currentEndTotal = curH * 60 + curM;
-              
-              let nextStartMinutes: number | null = null;
-              if (nextTask) {
-                const [nH, nM] = nextTask.startTime.split(':').map(Number);
-                nextStartMinutes = nH * 60 + nM;
-              }
+            <>
+              {filteredTasks.map((task, index) => {
+                const nextTask = filteredTasks[index + 1];
+                const [curH, curM] = task.endTime.split(':').map(Number);
+                const currentEndTotal = curH * 60 + curM;
+                
+                let nextStartMinutes: number | null = null;
+                if (nextTask) {
+                  const [nH, nM] = nextTask.startTime.split(':').map(Number);
+                  nextStartMinutes = nH * 60 + nM;
+                }
 
-              const isOvernight = parseInt(task.endTime.split(':')[0]) < parseInt(task.startTime.split(':')[0]);
-              const hasGap = !isOvernight && nextTask && nextStartMinutes !== null && (nextStartMinutes - currentEndTotal >= 1);
-              const hasOverlap = nextTask && nextStartMinutes !== null && (nextStartMinutes < currentEndTotal);
-              
-              const isOngoing = task.id === activeTaskId;
-              const isGapOngoing = selectedDate === todayStr && hasGap && nextStartMinutes !== null && (nowTotal >= currentEndTotal && nowTotal < nextStartMinutes);
+                const isOvernight = parseInt(task.endTime.split(':')[0]) < parseInt(task.startTime.split(':')[0]);
+                const hasGap = !isOvernight && nextTask && nextStartMinutes !== null && (nextStartMinutes - currentEndTotal >= 1);
+                const hasOverlap = nextTask && nextStartMinutes !== null && (nextStartMinutes < currentEndTotal);
+                
+                const isOngoing = task.id === activeTaskId;
+                const isGapOngoing = selectedDate === todayStr && hasGap && nextStartMinutes !== null && (nowTotal >= currentEndTotal && nowTotal < nextStartMinutes);
 
-              return (
-                <React.Fragment key={task.id}>
-                  <div data-task-id={task.id} data-ongoing={isOngoing}>
-                    <TimelineCard 
-                      task={task} 
-                      isRinging={ringingTaskId === task.id}
-                      isOngoing={isOngoing}
-                      onDismissAlarm={handleDismissAlarm}
-                      onSnoozeAlarm={handleSnoozeAlarm}
-                      onToggleAlarm={handleToggleAlarm}
-                      onToggleSubtask={handleToggleSubtask}
-                      onClick={handleEditTask}
-                    />
-                  </div>
-
-                  {hasOverlap && (
-                    <div onClick={() => handleEditTask(nextTask)} className="ml-5 flex items-center justify-between py-2.5 px-4 border border-dashed border-red-500/10 rounded-2xl cursor-pointer transition-all opacity-60 hover:opacity-100 active:scale-[0.98]">
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px] text-red-500/60">error_outline</span>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-dark">Schedule Overlap detected</p>
-                      </div>
+                return (
+                  <React.Fragment key={task.id}>
+                    <div data-task-id={task.id} data-ongoing={isOngoing}>
+                      <TimelineCard 
+                        task={task} 
+                        isRinging={ringingTaskId === task.id}
+                        isOngoing={isOngoing}
+                        onDismissAlarm={handleDismissAlarm}
+                        onSnoozeAlarm={handleSnoozeAlarm}
+                        onToggleAlarm={handleToggleAlarm}
+                        onToggleSubtask={handleToggleSubtask}
+                        onClick={handleEditTask}
+                      />
                     </div>
-                  )}
 
-                  {hasGap && !hasOverlap && (
-                    <div 
-                      onClick={handleAddNewTask} 
-                      className={`ml-5 relative flex items-center justify-between py-2.5 px-4 border border-dashed rounded-2xl transition-all cursor-pointer active:scale-[0.98] ${
-                        isGapOngoing 
-                          ? 'bg-primary/5 border-primary/30 shadow-[0_4px_12px_-4px_rgba(37,71,244,0.15)] ring-1 ring-primary/5' 
-                          : 'border-slate-200 dark:border-white/5 opacity-50 hover:opacity-100'
-                      }`}
-                    >
-                      <div className={`absolute -left-5 top-0 bottom-0 w-1 rounded-full transition-all duration-500 ${isGapOngoing ? 'bg-primary shadow-[0_0_8px_rgba(37,71,244,0.6)] scale-y-110' : 'bg-transparent'}`}></div>
-                      <div className="flex items-center gap-2">
-                        <span className={`material-symbols-outlined text-[18px] ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>
-                          {isGapOngoing ? 'progress_activity' : 'history_toggle_off'}
+                    {hasOverlap && (
+                      <div onClick={() => handleEditTask(nextTask)} className="ml-5 flex items-center justify-between py-2.5 px-4 border border-dashed border-red-500/10 rounded-2xl cursor-pointer transition-all opacity-60 hover:opacity-100 active:scale-[0.98]">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[18px] text-red-500/60">error_outline</span>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-dark">Schedule Overlap detected</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasGap && !hasOverlap && (
+                      <div 
+                        onClick={handleAddNewTask} 
+                        className={`ml-5 relative flex items-center justify-between py-2.5 px-4 border border-dashed rounded-2xl transition-all cursor-pointer active:scale-[0.98] ${
+                          isGapOngoing 
+                            ? 'bg-primary/5 border-primary/30 shadow-[0_4px_12px_-4px_rgba(37,71,244,0.15)] ring-1 ring-primary/5' 
+                            : 'border-slate-100 dark:border-white/5 opacity-50 hover:opacity-100'
+                        }`}
+                      >
+                        <div className={`absolute -left-5 top-0 bottom-0 w-1 rounded-full transition-all duration-500 ${isGapOngoing ? 'bg-primary shadow-[0_0_8px_rgba(37,71,244,0.6)] scale-y-110' : 'bg-transparent'}`}></div>
+                        <div className="flex items-center gap-2">
+                          <span className={`material-symbols-outlined text-[18px] ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>
+                            {isGapOngoing ? 'progress_activity' : 'history_toggle_off'}
+                          </span>
+                          <p className={`text-[10px] font-bold uppercase tracking-wider ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>
+                            {task.endTime} - {nextTask.startTime} • {calculateDuration(task.endTime, nextTask.startTime)} Free Time
+                          </p>
+                        </div>
+                        <span className="material-symbols-outlined text-sm text-neutral-dark">add_circle</span>
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+
+              {/* End of Day Message Section */}
+              {(() => {
+                const lastTask = filteredTasks[filteredTasks.length - 1];
+                const [h, m] = lastTask.endTime.split(':').map(Number);
+                const lastTotalMins = h * 60 + m;
+                
+                let greeting = "Good night, Sleep tight";
+                let icon = "bedtime";
+
+                if (lastTotalMins < 20 * 60) {
+                    greeting = "Rest of the day is clear.";
+                    icon = "wb_twilight";
+                } else if (lastTotalMins < 22 * 60) {
+                    greeting = "Have a good rest!";
+                    icon = "nights_stay";
+                } else {
+                    greeting = "Good night,Sleep tight";
+                    icon = "bedtime";
+                }
+
+                return (
+                  <div className="mt-8 mb-4 px-2 py-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                    <div className="inline-flex flex-col items-center gap-3">
+                      <div className="size-12 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mb-1">
+                        <span className="material-symbols-outlined text-primary/40 text-2xl">
+                          {icon}
                         </span>
-                        <p className={`text-[10px] font-bold uppercase tracking-wider ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>
-                          {task.endTime} - {nextTask.startTime} • {calculateDuration(task.endTime, nextTask.startTime)} Free Time
-                        </p>
                       </div>
-                      <span className={`material-symbols-outlined text-sm ${isGapOngoing ? 'text-primary' : 'text-neutral-dark'}`}>add_circle</span>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-dark opacity-40">
+                          End of Schedule
+                        </p>
+                        <h3 className="text-xl font-bold text-slate-400 dark:text-white/20">
+                          {greeting}
+                        </h3>
+                      </div>
                     </div>
-                  )}
-                </React.Fragment>
-              );
-            })
+                  </div>
+                );
+              })()}
+            </>
           )}
         </main>
       </div>
@@ -306,28 +349,28 @@ const App: React.FC = () => {
   const renderSettings = () => (
     <div className="flex flex-col min-h-screen pb-32 bg-background-light dark:bg-background-dark overflow-y-auto px-6 pt-10">
       <header className="mb-10">
-        <h1 className="text-3xl font-bold tracking-tight mb-2">Settings</h1>
+        <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-800 dark:text-white">Settings</h1>
         <p className="text-neutral-dark text-sm">Personalize your Nova experience</p>
       </header>
 
       <section className="space-y-6">
-        <div className="bg-white dark:bg-card-dark rounded-3xl p-6 border border-slate-200 dark:border-white/5 space-y-4 shadow-sm">
+        <div className="bg-white dark:bg-card-dark rounded-3xl p-6 border border-slate-100 dark:border-white/5 space-y-4 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
               <span className="material-symbols-outlined text-4xl">account_circle</span>
             </div>
             <div>
-              <h3 className="font-bold text-lg">Nova User</h3>
+              <h3 className="font-bold text-lg text-slate-800 dark:text-white">Nova User</h3>
               <p className="text-neutral-dark text-xs uppercase tracking-widest font-black">Free Plan</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-card-dark rounded-3xl p-4 border border-slate-200 dark:border-white/5 space-y-1 shadow-sm">
+        <div className="bg-white dark:bg-card-dark rounded-3xl p-4 border border-slate-100 dark:border-white/5 space-y-1 shadow-sm">
           <button onClick={toggleTheme} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-white/5 rounded-2xl transition-all">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-primary">{isDarkMode ? 'light_mode' : 'dark_mode'}</span>
-              <span className="font-bold">App Theme</span>
+              <span className="font-bold text-slate-700 dark:text-white">App Theme</span>
             </div>
             <span className="text-neutral-dark text-sm font-medium">{isDarkMode ? 'Dark' : 'Light'}</span>
           </button>
@@ -335,18 +378,18 @@ const App: React.FC = () => {
           <div className="w-full flex items-center justify-between p-3">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-yellow-500">notifications_active</span>
-              <span className="font-bold">Master Alarms</span>
+              <span className="font-bold text-slate-700 dark:text-white">Master Alarms</span>
             </div>
             <button 
               onClick={() => setGlobalAlarmsEnabled(!globalAlarmsEnabled)}
-              className={`w-12 h-6 rounded-full transition-all relative ${globalAlarmsEnabled ? 'bg-primary' : 'bg-slate-300 dark:bg-white/10'}`}
+              className={`w-12 h-6 rounded-full transition-all relative ${globalAlarmsEnabled ? 'bg-primary' : 'bg-slate-200 dark:bg-white/10'}`}
             >
               <div className={`absolute top-1 size-4 bg-white rounded-full transition-all ${globalAlarmsEnabled ? 'left-7' : 'left-1'}`} />
             </button>
           </div>
         </div>
 
-        <div className="bg-primary/5 rounded-3xl p-6 border border-primary/20 space-y-4 relative overflow-hidden">
+        <div className="bg-primary/5 rounded-3xl p-6 border border-primary/10 space-y-4 relative overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">auto_awesome</span>
@@ -361,7 +404,7 @@ const App: React.FC = () => {
             </button>
           </div>
           {productivityInsight ? (
-            <p className="text-sm text-slate-700 dark:text-slate-300 italic leading-relaxed">
+            <p className="text-sm text-slate-600 dark:text-slate-300 italic leading-relaxed">
               "{productivityInsight}"
             </p>
           ) : (
@@ -369,7 +412,7 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <div className="bg-white dark:bg-card-dark rounded-3xl p-4 border border-slate-200 dark:border-white/5 space-y-1 shadow-sm">
+        <div className="bg-white dark:bg-card-dark rounded-3xl p-4 border border-slate-100 dark:border-white/5 space-y-1 shadow-sm">
           <button onClick={handleResetData} className="w-full flex items-center gap-3 p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-2xl transition-all">
             <span className="material-symbols-outlined">delete_forever</span>
             <span className="font-bold">Reset All Data</span>
@@ -377,7 +420,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="text-center pt-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-dark opacity-40">Nova Routine Planner v1.0.4</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-dark opacity-30">Nova Routine Planner v1.0.4</p>
         </div>
       </section>
     </div>
@@ -385,7 +428,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex justify-center bg-background-light dark:bg-background-dark min-h-screen overflow-x-hidden">
-      <div className="w-full max-w-md bg-background-light dark:bg-background-dark min-h-screen relative border-x border-slate-200 dark:border-slate-800 overflow-x-hidden">
+      <div className="w-full max-w-md bg-background-light dark:bg-background-dark min-h-screen relative border-x border-slate-100 dark:border-slate-800 overflow-x-hidden shadow-sm">
         {view === 'timeline' && renderTimeline()}
         {view === 'settings' && renderSettings()}
         {view === 'edit' && (
@@ -401,7 +444,7 @@ const App: React.FC = () => {
         )}
         
         {view !== 'edit' && (
-          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white/90 dark:bg-background-dark/95 backdrop-blur-lg border-t border-slate-200 dark:border-white/5 pb-8 pt-4">
+          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white/90 dark:bg-background-dark/95 backdrop-blur-lg border-t border-slate-100 dark:border-white/5 pb-8 pt-4 shadow-2xl">
             <div className="flex justify-between items-center px-6">
               <button onClick={() => setView('timeline')} className={`flex flex-col items-center gap-1 flex-1 ${view === 'timeline' ? 'text-primary' : 'text-neutral-dark'}`}>
                 <div className={`flex h-8 w-12 items-center justify-center rounded-full ${view === 'timeline' ? 'bg-primary/10' : ''}`}><span className="material-symbols-outlined">schedule</span></div>
