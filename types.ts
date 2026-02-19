@@ -23,11 +23,29 @@ export interface Task {
   isActive: boolean;
   repeat: RepeatOption;
   alarmEnabled: boolean;
-  alarmLeadMinutes?: number; // 0 or 5
+  alarmLeadMinutes?: number; 
   notes: string;
-  color: string;     // Hex color or Tailwind class
+  color: string;     
   createdAt: string; // ISO date string YYYY-MM-DD
   subtasks?: Subtask[];
 }
 
-export type ViewState = 'timeline' | 'edit' | 'settings';
+export type NoteBlockType = 'text' | 'checklist' | 'table' | 'doodle';
+
+export interface NoteBlock {
+  id: string;
+  type: NoteBlockType;
+  data: any; 
+}
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string; // Summarized text version for search
+  blocks?: NoteBlock[];
+  updatedAt: string;
+  createdAt: string;
+}
+
+export type AppMode = 'routines' | 'notes';
+export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor';
