@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Task, Note, AppMode, ViewState, RepeatOption } from './types';
+import { Task, Note, FinanceEntry, AppMode, ViewState, RepeatOption } from './types';
 import { INITIAL_TASKS } from './constants';
 import DateHeader from './components/DateHeader';
 import TimelineCard from './components/TimelineCard';
@@ -9,46 +9,34 @@ import AlarmOverlay from './components/AlarmOverlay';
 import Settings from './components/Settings';
 import NoteList from './components/Notes/NoteList';
 import NoteEditor from './components/Notes/NoteEditor';
+import TestView from './components/TestView';
+import FinanceList from './components/Finance/FinanceList';
+import FinanceForm from './components/Finance/FinanceForm';
+import NavigationHub from './components/NavigationHub';
 import { optimizeSchedule } from './geminiService';
-
-const getLocalDateString = (date: Date) => {
-  const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const subtractMinutes = (time: string, mins: number) => {
-  const [h, m] = time.split(':').map(Number);
-  let total = h * 60 + m - mins;
-  if (total < 0) total += 1440;
-  const newH = Math.floor(total / 60) % 24;
-  const newM = total % 60;
-  return `${newH.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
-};
+import { getLocalDateString, subtractMinutes } from './components/utils/time';
+import { analyzeTimeline } from './components/utils/timeline';
+import { filterTasksByDate, getActiveTaskId } from './components/utils/taskUtils';
 
 const App: React.FC = () => {
-  // --- Persistent Mode Logic ---
   const [appMode, setAppMode] = useState<AppMode>(() => {
     return (localStorage.getItem('nova_app_mode') as AppMode) || 'routines';
   });
-
   const [view, setView] = useState<ViewState>('timeline');
-
-  // --- Routine Data ---
   const [tasks, setTasks] = useState<Task[]>(() => {
     const saved = localStorage.getItem('nova_tasks');
     if (saved) return JSON.parse(saved);
     const todayStr = getLocalDateString(new Date());
     return INITIAL_TASKS.map(t => ({ ...t, createdAt: todayStr, subtasks: [] }));
   });
-
-  // --- Notes Data ---
   const [notes, setNotes] = useState<Note[]>(() => {
     const saved = localStorage.getItem('nova_notes');
     return saved ? JSON.parse(saved) : [];
   });
-
+  const [finances, setFinances] = useState<FinanceEntry[]>(() => {
+    const saved = localStorage.getItem('nova_finances');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [selectedDate, setSelectedDate] = useState<string>(() => getLocalDateString(new Date()));
   const [now, setNow] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
@@ -58,24 +46,16 @@ const App: React.FC = () => {
   const [ringingTaskId, setRingingTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [selectedFinance, setSelectedFinance] = useState<FinanceEntry | null>(null);
+  const [prefillTimes, setPrefillTimes] = useState<{start: string, end: string} | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastRungRef = useRef<string | null>(null);
 
-  // Sync mode to local storage
-  useEffect(() => {
-    localStorage.setItem('nova_app_mode', appMode);
-  }, [appMode]);
-
-  // Sync tasks to local storage
-  useEffect(() => {
-    localStorage.setItem('nova_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  // Sync notes to local storage
-  useEffect(() => {
-    localStorage.setItem('nova_notes', JSON.stringify(notes));
-  }, [notes]);
+  useEffect(() => { localStorage.setItem('nova_app_mode', appMode); }, [appMode]);
+  useEffect(() => { localStorage.setItem('nova_tasks', JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem('nova_notes', JSON.stringify(notes)); }, [notes]);
+  useEffect(() => { localStorage.setItem('nova_finances', JSON.stringify(finances)); }, [finances]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 15000);
@@ -87,13 +67,11 @@ const App: React.FC = () => {
     audioRef.current.loop = true;
   }, []);
 
-  // --- Alarms Logic ---
   useEffect(() => {
     const checkAlarms = () => {
       if (!globalAlarmsEnabled) return;
       const todayStr = getLocalDateString(now);
       const currentHHmm = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-
       tasks.forEach(t => {
         if (!t.alarmEnabled) return;
         const triggerTime = subtractMinutes(t.startTime, t.alarmLeadMinutes || 0);
@@ -102,7 +80,6 @@ const App: React.FC = () => {
                         (t.repeat === RepeatOption.DAILY) ||
                         (t.repeat === RepeatOption.WEEKLY && taskDate.getDay() === now.getDay()) ||
                         (t.repeat === RepeatOption.MONTHLY && taskDate.getDate() === now.getDate());
-
         if (isToday && triggerTime === currentHHmm) {
           const rungId = `${t.id}_${triggerTime}_${todayStr}`;
           if (lastRungRef.current !== rungId && !ringingTaskId) {
@@ -122,34 +99,11 @@ const App: React.FC = () => {
     setRingingTaskId(null);
   };
 
-  const filteredTasks = useMemo(() => {
-    const targetDate = new Date(selectedDate);
-    return tasks.filter(task => {
-      const taskDate = new Date(task.createdAt);
-      if (task.repeat === RepeatOption.DAILY) return true;
-      if (task.repeat === RepeatOption.WEEKLY) return taskDate.getDay() === targetDate.getDay();
-      if (task.repeat === RepeatOption.MONTHLY) return taskDate.getDate() === targetDate.getDate();
-      return task.createdAt === selectedDate;
-    }).sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [tasks, selectedDate]);
+  const filteredTasks = useMemo(() => filterTasksByDate(tasks, selectedDate), [tasks, selectedDate]);
+  const activeTaskId = useMemo(() => getActiveTaskId(filteredTasks, now, selectedDate), [filteredTasks, now, selectedDate]);
 
-  const activeTaskId = useMemo(() => {
-    const todayStr = getLocalDateString(now);
-    if (selectedDate !== todayStr) return null;
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-    return filteredTasks.find(t => {
-      const [sh, sm] = t.startTime.split(':').map(Number);
-      const [eh, em] = t.endTime.split(':').map(Number);
-      const startMins = sh * 60 + sm;
-      const endMins = eh * 60 + em;
-      return currentMins >= startMins && currentMins < endMins;
-    })?.id || null;
-  }, [filteredTasks, selectedDate, now]);
-
-  // --- Handlers ---
-  const handleToggleMode = () => {
-    const nextMode = appMode === 'routines' ? 'notes' : 'routines';
-    setAppMode(nextMode);
+  const handleSwitchMode = (mode: AppMode) => {
+    setAppMode(mode);
     setView('timeline');
   };
 
@@ -160,6 +114,22 @@ const App: React.FC = () => {
       return [note, ...prev];
     });
     setSelectedNote(null);
+    setView('timeline');
+  };
+
+  const handleSaveFinance = (entry: FinanceEntry) => {
+    setFinances(prev => {
+      const exists = prev.find(e => e.id === entry.id);
+      if (exists) return prev.map(e => e.id === entry.id ? entry : e);
+      return [entry, ...prev];
+    });
+    setSelectedFinance(null);
+    setView('timeline');
+  };
+
+  const handleDeleteFinance = (id: string) => {
+    setFinances(prev => prev.filter(e => e.id !== id));
+    setSelectedFinance(null);
     setView('timeline');
   };
 
@@ -176,12 +146,14 @@ const App: React.FC = () => {
       return [...prev, { ...task, createdAt: selectedDate }];
     });
     setSelectedTask(null);
+    setPrefillTimes(null);
     setView('timeline');
   };
 
-  // --- Rendering Functions ---
+  const timelineItems = useMemo(() => analyzeTimeline(filteredTasks), [filteredTasks]);
+
   const renderRoutines = () => (
-    <div className="flex flex-col min-h-screen pb-32">
+    <div className="flex flex-col min-h-screen pb-40 animate-in fade-in duration-300">
       <DateHeader selectedDate={selectedDate} setSelectedDate={setSelectedDate} tasks={tasks} />
       <main className="flex-1 px-6 py-4 space-y-4">
         <h2 className="text-[10px] font-bold text-neutral-dark uppercase tracking-widest">
@@ -193,128 +165,96 @@ const App: React.FC = () => {
             <p className="font-medium">No routines found</p>
           </div>
         ) : (
-          filteredTasks.map((task) => (
-            <TimelineCard 
-              key={task.id}
-              task={task} 
-              isOngoing={task.id === activeTaskId}
-              onToggleAlarm={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, alarmEnabled: !t.alarmEnabled } : t))}
-              onToggleSubtask={(taskId, subId) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: t.subtasks?.map(s => s.id === subId ? { ...s, completed: !s.completed } : s) } : t))}
-              onClick={(t) => { setSelectedTask(t); setView('edit'); }}
-              onDismissAlarm={handleDismissAlarm}
-              onSnoozeAlarm={handleDismissAlarm}
-            />
-          ))
+          timelineItems.map((item, idx) => {
+            if (item.type === 'task') {
+              return (
+                <TimelineCard 
+                  key={item.data.id}
+                  task={item.data} 
+                  isOngoing={item.data.id === activeTaskId}
+                  onToggleAlarm={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, alarmEnabled: !t.alarmEnabled } : t))}
+                  onToggleSubtask={(taskId, subId) => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: t.subtasks?.map(s => s.id === subId ? { ...s, completed: !s.completed } : s) } : t))}
+                  onClick={(t) => { setSelectedTask(t); setView('edit'); }}
+                  onDismissAlarm={handleDismissAlarm}
+                  onSnoozeAlarm={handleDismissAlarm}
+                />
+              );
+            } else if (item.type === 'gap') {
+              return (
+                <div key={`gap-${idx}`} className="ml-5 py-2 group">
+                  <div className="flex items-center gap-4 px-4 py-3 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 bg-slate-50/30 dark:bg-white/5 transition-all hover:bg-primary/5 hover:border-primary/30">
+                    <div className="flex-1">
+                      <p className="text-[10px] font-black uppercase text-neutral-dark opacity-60 tracking-widest">
+                        {item.start} — {item.end}
+                      </p>
+                      <p className="text-xs font-bold text-slate-400 dark:text-white/20">
+                        {item.duration >= 60 ? `${Math.floor(item.duration / 60)}h ${item.duration % 60}m` : `${item.duration}m`} Free Time
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setPrefillTimes({ start: item.start, end: item.end });
+                        setSelectedTask(null);
+                        setView('edit');
+                      }}
+                      className="size-8 bg-white dark:bg-white/10 text-primary rounded-full shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-lg">add</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })
         )}
-        
-        {filteredTasks.length > 0 && (() => {
-          const lastTask = filteredTasks[filteredTasks.length - 1];
-          const [h, m] = lastTask.endTime.split(':').map(Number);
-          const lastTotalMins = h * 60 + m;
-          let greeting = "Good night, sleep tight";
-          let icon = "bedtime";
-          if (lastTotalMins < 20 * 60) { greeting = "rest of the day is clear."; icon = "wb_twilight"; }
-          else if (lastTotalMins < 22 * 60) { greeting = "Hope you wind down and sleep well"; icon = "nights_stay"; }
-          
-          return (
-            <div className="mt-8 mb-4 py-8 text-center animate-in fade-in slide-in-from-bottom-4">
-              <span className="material-symbols-outlined text-primary/40 text-2xl mb-2">{icon}</span>
-              <h3 className="text-xl font-bold text-slate-400 dark:text-white/20">{greeting}</h3>
-            </div>
-          );
-        })()}
       </main>
     </div>
-  );
-
-  const renderNotes = () => (
-    <NoteList 
-      notes={notes} 
-      onSelectNote={(note) => { setSelectedNote(note); setView('note-editor'); }} 
-      onAddNote={() => { setSelectedNote(null); setView('note-editor'); }}
-    />
   );
 
   return (
     <div className="flex justify-center bg-background-light dark:bg-background-dark min-h-screen">
       <div className="w-full max-w-md bg-background-light dark:bg-background-dark min-h-screen relative border-x border-slate-100 dark:border-slate-800 shadow-sm overflow-x-hidden">
+        {view === 'timeline' && (
+          <>
+            {appMode === 'routines' && renderRoutines()}
+            {appMode === 'notes' && <NoteList notes={notes} onSelectNote={(n) => { setSelectedNote(n); setView('note-editor'); }} onAddNote={() => { setSelectedNote(null); setView('note-editor'); }} />}
+            {appMode === 'finance' && <FinanceList entries={finances} onAdd={() => { setSelectedFinance(null); setView('finance-editor'); }} onSelect={(e) => { setSelectedFinance(e); setView('finance-editor'); }} />}
+          </>
+        )}
         
-        {view === 'timeline' && (appMode === 'routines' ? renderRoutines() : renderNotes())}
-        
-        {view === 'settings' && (
-          <Settings 
-            isDarkMode={isDarkMode}
-            setIsDarkMode={setIsDarkMode}
-            globalAlarmsEnabled={globalAlarmsEnabled}
-            setGlobalAlarmsEnabled={setGlobalAlarmsEnabled}
-            appMode={appMode}
-            onToggleMode={handleToggleMode}
-            onBack={() => setView('timeline')}
-            onResetData={() => { if(confirm("Reset all?")) { setTasks([]); setNotes([]); localStorage.clear(); window.location.reload(); } }}
-            fetchInsight={async () => {
-              setIsOptimizing(true);
-              const res = await optimizeSchedule(JSON.stringify(tasks));
-              setProductivityInsight(res);
-              setIsOptimizing(false);
-            }}
-            insight={productivityInsight}
-            isOptimizing={isOptimizing}
-          />
-        )}
-
-        {view === 'edit' && (
-          <TaskForm 
-            task={selectedTask} 
-            onSave={handleSaveTask} 
-            onBack={() => { setSelectedTask(null); setView('timeline'); }} 
-            onDelete={(id) => { setTasks(prev => prev.filter(t => t.id !== id)); setView('timeline'); }} 
-            allTasks={tasks} 
-            selectedDate={selectedDate}
-          />
-        )}
-
-        {view === 'note-editor' && (
-          <NoteEditor 
-            note={selectedNote} 
-            onSave={handleSaveNote} 
-            onBack={() => { setSelectedNote(null); setView('timeline'); }} 
-            onDelete={handleDeleteNote}
-          />
-        )}
+        {view === 'settings' && <Settings isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} globalAlarmsEnabled={globalAlarmsEnabled} setGlobalAlarmsEnabled={setGlobalAlarmsEnabled} appMode={appMode} onToggleMode={handleSwitchMode} onBack={() => setView('timeline')} onResetData={() => { if(confirm("Reset all data?")) { localStorage.clear(); window.location.reload(); } }} fetchInsight={async () => { setIsOptimizing(true); const res = await optimizeSchedule(JSON.stringify(tasks)); setProductivityInsight(res); setIsOptimizing(false); }} insight={productivityInsight} isOptimizing={isOptimizing} onGoToTests={() => setView('tests')} />}
+        {view === 'edit' && <TaskForm task={selectedTask} prefillStart={prefillTimes?.start} prefillEnd={prefillTimes?.end} onSave={handleSaveTask} onBack={() => { setSelectedTask(null); setPrefillTimes(null); setView('timeline'); }} onDelete={(id) => { setTasks(prev => prev.filter(t => t.id !== id)); setView('timeline'); }} allTasks={tasks} selectedDate={selectedDate} />}
+        {view === 'note-editor' && <NoteEditor note={selectedNote} onSave={handleSaveNote} onBack={() => { setSelectedNote(null); setView('timeline'); }} onDelete={handleDeleteNote} />}
+        {view === 'finance-editor' && <FinanceForm entry={selectedFinance} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onBack={() => { setSelectedFinance(null); setView('timeline'); }} />}
+        {view === 'tests' && <TestView onBack={() => setView('settings')} />}
         
         {view === 'timeline' && (
           <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white/90 dark:bg-background-dark/95 backdrop-blur-lg border-t border-slate-100 dark:border-white/5 pb-8 pt-4 shadow-2xl">
             <div className="flex justify-between items-center px-6">
-              <button onClick={() => setView('timeline')} className="flex flex-col items-center gap-1 flex-1 text-primary">
-                <div className="flex h-8 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <span className="material-symbols-outlined">{appMode === 'routines' ? 'schedule' : 'description'}</span>
-                </div>
-                <p className="text-[10px] font-bold uppercase tracking-tighter">{appMode === 'routines' ? 'Timeline' : 'Notes'}</p>
-              </button>
+              <NavigationHub currentMode={appMode} onSwitchMode={handleSwitchMode} />
+              
               <button 
-                onClick={() => {
-                  if (appMode === 'routines') { setSelectedTask(null); setView('edit'); }
-                  else { setSelectedNote(null); setView('note-editor'); }
+                onClick={() => { 
+                  if (appMode === 'routines') { setPrefillTimes(null); setSelectedTask(null); setView('edit'); } 
+                  else if (appMode === 'notes') { setSelectedNote(null); setView('note-editor'); }
+                  else { setSelectedFinance(null); setView('finance-editor'); }
                 }} 
                 className="size-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white dark:border-background-dark active:scale-95 transition-all"
               >
                 <span className="material-symbols-outlined text-3xl">add</span>
               </button>
+              
               <button onClick={() => setView('settings')} className="flex flex-col items-center gap-1 flex-1 text-neutral-dark">
-                <div className="flex h-8 w-12 items-center justify-center rounded-full"><span className="material-symbols-outlined">settings</span></div>
-                <p className="text-[10px] font-bold uppercase tracking-tighter">Settings</p>
+                <div className="flex h-8 w-12 items-center justify-center rounded-full">
+                  <span className="material-symbols-outlined">settings</span>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-tighter">System</p>
               </button>
             </div>
           </nav>
         )}
-
-        {ringingTaskId && (
-          <AlarmOverlay 
-            task={tasks.find(t => t.id === ringingTaskId)!} 
-            onDismiss={handleDismissAlarm} 
-            onSnooze={handleDismissAlarm} 
-          />
-        )}
+        {ringingTaskId && <AlarmOverlay task={tasks.find(t => t.id === ringingTaskId)!} onDismiss={handleDismissAlarm} onSnooze={handleDismissAlarm} />}
       </div>
     </div>
   );

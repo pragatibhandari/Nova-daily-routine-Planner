@@ -17,16 +17,16 @@ export interface Subtask {
 export interface Task {
   id: string;
   name: string;
-  startTime: string; // HH:mm format
-  endTime: string;   // HH:mm format
-  icon: string;      // Material Symbol name
+  startTime: string; 
+  endTime: string;   
+  icon: string;      
   isActive: boolean;
   repeat: RepeatOption;
   alarmEnabled: boolean;
   alarmLeadMinutes?: number; 
   notes: string;
   color: string;     
-  createdAt: string; // ISO date string YYYY-MM-DD
+  createdAt: string; 
   subtasks?: Subtask[];
 }
 
@@ -41,11 +41,27 @@ export interface NoteBlock {
 export interface Note {
   id: string;
   title: string;
-  content: string; // Summarized text version for search
+  content: string; 
   blocks?: NoteBlock[];
   updatedAt: string;
   createdAt: string;
 }
 
-export type AppMode = 'routines' | 'notes';
-export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor';
+export type FinanceCategory = 'Rent' | 'Subscription' | 'Utility' | 'Insurance' | 'Loan' | 'Person' | 'Grocery' | 'Other';
+export type FinanceType = 'debt' | 'credit' | 'fixed';
+
+export interface FinanceEntry {
+  id: string;
+  title: string;
+  person?: string; // For debt/credit
+  amount: number;
+  type: FinanceType;
+  category: FinanceCategory;
+  date: string;
+  dueDate?: string;
+  isSettled: boolean;
+  note?: string;
+}
+
+export type AppMode = 'routines' | 'notes' | 'finance';
+export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor' | 'tests' | 'finance-editor';

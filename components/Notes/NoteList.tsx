@@ -78,7 +78,9 @@ const NoteList: React.FC<NoteListProps> = ({ notes, onSelectNote, onAddNote }) =
                   </p>
                 ) : (
                   <div className="flex items-center gap-2 opacity-30 italic text-xs py-2">
-                    <span className="material-symbols-outlined text-sm">sticky_note_2</span>
+                    <span className="text-[10px] font-bold">
+                      {new Date(note.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
                     Empty note
                   </div>
                 )}
