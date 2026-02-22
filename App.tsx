@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Task, Note, FinanceEntry, AppMode, ViewState, RepeatOption } from './types';
+import { Task, Note, FinanceEntry, ShoppingItem, AppMode, ViewState, RepeatOption } from './types';
 import { INITIAL_TASKS } from './constants';
 import DateHeader from './components/DateHeader';
 import TimelineCard from './components/TimelineCard';
@@ -12,6 +12,8 @@ import NoteEditor from './components/Notes/NoteEditor';
 import TestView from './components/TestView';
 import FinanceList from './components/Finance/FinanceList';
 import FinanceForm from './components/Finance/FinanceForm';
+import ShoppingList from './components/Shopping/ShoppingList';
+import ShoppingForm from './components/Shopping/ShoppingForm';
 import NavigationHub from './components/NavigationHub';
 import { optimizeSchedule } from './geminiService';
 import { getLocalDateString, subtractMinutes } from './components/utils/time';
@@ -37,6 +39,10 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('nova_finances');
     return saved ? JSON.parse(saved) : [];
   });
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(() => {
+    const saved = localStorage.getItem('nova_shopping');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [selectedDate, setSelectedDate] = useState<string>(() => getLocalDateString(new Date()));
   const [now, setNow] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
@@ -47,7 +53,11 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [selectedFinance, setSelectedFinance] = useState<FinanceEntry | null>(null);
+  const [selectedShoppingItem, setSelectedShoppingItem] = useState<ShoppingItem | null>(null);
   const [prefillTimes, setPrefillTimes] = useState<{start: string, end: string} | null>(null);
+  const [currency, setCurrency] = useState<string>(() => {
+    return localStorage.getItem('nova_currency') || '$';
+  });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastRungRef = useRef<string | null>(null);
@@ -56,6 +66,8 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('nova_tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('nova_notes', JSON.stringify(notes)); }, [notes]);
   useEffect(() => { localStorage.setItem('nova_finances', JSON.stringify(finances)); }, [finances]);
+  useEffect(() => { localStorage.setItem('nova_shopping', JSON.stringify(shoppingItems)); }, [shoppingItems]);
+  useEffect(() => { localStorage.setItem('nova_currency', currency); }, [currency]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 15000);
@@ -131,6 +143,26 @@ const App: React.FC = () => {
     setFinances(prev => prev.filter(e => e.id !== id));
     setSelectedFinance(null);
     setView('timeline');
+  };
+
+  const handleSaveShoppingItem = (item: ShoppingItem) => {
+    setShoppingItems(prev => {
+      const exists = prev.find(i => i.id === item.id);
+      if (exists) return prev.map(i => i.id === item.id ? item : i);
+      return [item, ...prev];
+    });
+    setSelectedShoppingItem(null);
+    setView('timeline');
+  };
+
+  const handleDeleteShoppingItem = (id: string) => {
+    setShoppingItems(prev => prev.filter(i => i.id !== id));
+    setSelectedShoppingItem(null);
+    setView('timeline');
+  };
+
+  const handleToggleShoppingItem = (id: string) => {
+    setShoppingItems(prev => prev.map(i => i.id === id ? { ...i, completed: !i.completed } : i));
   };
 
   const handleDeleteNote = (id: string) => {
@@ -219,14 +251,16 @@ const App: React.FC = () => {
           <>
             {appMode === 'routines' && renderRoutines()}
             {appMode === 'notes' && <NoteList notes={notes} onSelectNote={(n) => { setSelectedNote(n); setView('note-editor'); }} onAddNote={() => { setSelectedNote(null); setView('note-editor'); }} />}
-            {appMode === 'finance' && <FinanceList entries={finances} onAdd={() => { setSelectedFinance(null); setView('finance-editor'); }} onSelect={(e) => { setSelectedFinance(e); setView('finance-editor'); }} />}
+            {appMode === 'finance' && <FinanceList entries={finances} currency={currency} onCurrencyChange={setCurrency} onAdd={() => { setSelectedFinance(null); setView('finance-editor'); }} onSelect={(e) => { setSelectedFinance(e); setView('finance-editor'); }} />}
+            {appMode === 'shopping' && <ShoppingList items={shoppingItems} currency={currency} onToggle={handleToggleShoppingItem} onSelect={(i) => { setSelectedShoppingItem(i); setView('shopping-editor'); }} onAdd={() => { setSelectedShoppingItem(null); setView('shopping-editor'); }} />}
           </>
         )}
         
         {view === 'settings' && <Settings isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} globalAlarmsEnabled={globalAlarmsEnabled} setGlobalAlarmsEnabled={setGlobalAlarmsEnabled} appMode={appMode} onToggleMode={handleSwitchMode} onBack={() => setView('timeline')} onResetData={() => { if(confirm("Reset all data?")) { localStorage.clear(); window.location.reload(); } }} fetchInsight={async () => { setIsOptimizing(true); const res = await optimizeSchedule(JSON.stringify(tasks)); setProductivityInsight(res); setIsOptimizing(false); }} insight={productivityInsight} isOptimizing={isOptimizing} onGoToTests={() => setView('tests')} />}
         {view === 'edit' && <TaskForm task={selectedTask} prefillStart={prefillTimes?.start} prefillEnd={prefillTimes?.end} onSave={handleSaveTask} onBack={() => { setSelectedTask(null); setPrefillTimes(null); setView('timeline'); }} onDelete={(id) => { setTasks(prev => prev.filter(t => t.id !== id)); setView('timeline'); }} allTasks={tasks} selectedDate={selectedDate} />}
         {view === 'note-editor' && <NoteEditor note={selectedNote} onSave={handleSaveNote} onBack={() => { setSelectedNote(null); setView('timeline'); }} onDelete={handleDeleteNote} />}
-        {view === 'finance-editor' && <FinanceForm entry={selectedFinance} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onBack={() => { setSelectedFinance(null); setView('timeline'); }} />}
+        {view === 'finance-editor' && <FinanceForm entry={selectedFinance} currency={currency} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onBack={() => { setSelectedFinance(null); setView('timeline'); }} />}
+        {view === 'shopping-editor' && <ShoppingForm item={selectedShoppingItem} currency={currency} onSave={handleSaveShoppingItem} onDelete={handleDeleteShoppingItem} onBack={() => { setSelectedShoppingItem(null); setView('timeline'); }} />}
         {view === 'tests' && <TestView onBack={() => setView('settings')} />}
         
         {view === 'timeline' && (
@@ -238,7 +272,8 @@ const App: React.FC = () => {
                 onClick={() => { 
                   if (appMode === 'routines') { setPrefillTimes(null); setSelectedTask(null); setView('edit'); } 
                   else if (appMode === 'notes') { setSelectedNote(null); setView('note-editor'); }
-                  else { setSelectedFinance(null); setView('finance-editor'); }
+                  else if (appMode === 'finance') { setSelectedFinance(null); setView('finance-editor'); }
+                  else { setSelectedShoppingItem(null); setView('shopping-editor'); }
                 }} 
                 className="size-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white dark:border-background-dark active:scale-95 transition-all"
               >

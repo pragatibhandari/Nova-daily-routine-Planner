@@ -301,23 +301,46 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ note, onSave, onBack, onDelete 
                             newData[idx].text = e.target.value;
                             updateBlock(block.id, newData);
                           }}
-                          onBlur={() => pushToHistory(blocks)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const newData = [...block.data];
+                              const newItem = { id: Math.random().toString(36).substr(2, 9), text: '', checked: false };
+                              newData.splice(idx + 1, 0, newItem);
+                              const newBlocks = blocks.map(b => b.id === block.id ? { ...b, data: newData } : b);
+                              pushToHistory(newBlocks);
+                            } else if (e.key === 'Backspace' && item.text === '' && block.data.length > 1) {
+                              e.preventDefault();
+                              const newData = block.data.filter((_: any, i: number) => i !== idx);
+                              const newBlocks = blocks.map(b => b.id === block.id ? { ...b, data: newData } : b);
+                              pushToHistory(newBlocks);
+                            }
+                          }}
+                          onBlur={() => {}}
                           placeholder="List item..."
+                          autoFocus={item.text === '' && !item.checked}
                         />
                         <button onClick={() => {
                           const newData = block.data.filter((_: any, i: number) => i !== idx);
-                          if (newData.length === 0) removeBlock(block.id);
-                          else { updateBlock(block.id, newData); pushToHistory(blocks); }
+                          if (newData.length === 0) {
+                            removeBlock(block.id);
+                          } else {
+                            const newBlocks = blocks.map(b => b.id === block.id ? { ...b, data: newData } : b);
+                            pushToHistory(newBlocks);
+                          }
                         }} className="size-8 text-slate-300 hover:text-red-400 transition-colors"><span className="material-symbols-outlined text-sm">close</span></button>
                       </div>
                     ))}
-                    <button onClick={() => {
-                      const newData = [...block.data, { id: Math.random().toString(36).substr(2, 9), text: '', checked: false }];
-                      updateBlock(block.id, newData);
-                      pushToHistory(blocks);
-                    }} className="text-primary text-[11px] font-black uppercase tracking-widest pl-9 flex items-center gap-2 mt-2">
-                      <span className="material-symbols-outlined text-sm">add_task</span> Add item
-                    </button>
+                    
+                    <div className="flex items-center gap-4 mt-2 pl-9">
+                      <button onClick={() => {
+                        const newData = [...block.data, { id: Math.random().toString(36).substr(2, 9), text: '', checked: false }];
+                        const newBlocks = blocks.map(b => b.id === block.id ? { ...b, data: newData } : b);
+                        pushToHistory(newBlocks);
+                      }} className="text-primary text-[11px] font-black uppercase tracking-widest flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm">add_task</span> Add item
+                      </button>
+                    </div>
                   </div>
                 )}
 

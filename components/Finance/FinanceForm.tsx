@@ -4,6 +4,7 @@ import { FinanceEntry, FinanceType, FinanceCategory } from '../../types';
 
 interface FinanceFormProps {
   entry: FinanceEntry | null;
+  currency: string;
   onSave: (entry: FinanceEntry) => void;
   onDelete: (id: string) => void;
   onBack: () => void;
@@ -11,7 +12,7 @@ interface FinanceFormProps {
 
 const CATEGORIES: FinanceCategory[] = ['Rent', 'Subscription', 'Utility', 'Insurance', 'Loan', 'Person', 'Grocery', 'Other'];
 
-const FinanceForm: React.FC<FinanceFormProps> = ({ entry, onSave, onDelete, onBack }) => {
+const FinanceForm: React.FC<FinanceFormProps> = ({ entry, currency, onSave, onDelete, onBack }) => {
   const [title, setTitle] = useState(entry?.title || '');
   const [person, setPerson] = useState(entry?.person || '');
   const [amount, setAmount] = useState(entry?.amount?.toString() || '');
@@ -75,7 +76,7 @@ const FinanceForm: React.FC<FinanceFormProps> = ({ entry, onSave, onDelete, onBa
 
         <div className="text-center space-y-2">
           <div className="relative inline-block">
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 text-4xl font-bold opacity-20">$</span>
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 text-4xl font-bold opacity-20">{currency}</span>
             <input 
               type="number"
               placeholder="0.00"

@@ -42,7 +42,7 @@ const TimelineCard: React.FC<TimelineCardProps> = ({
           ? 'bg-yellow-400' 
           : isOngoing 
             ? 'bg-primary shadow-[0_0_12px_rgba(37,71,244,0.8)] scale-y-110' 
-            : 'bg-primary/20 group-hover:bg-primary/40'
+            : 'bg-primary/10 dark:bg-primary/20 group-hover:bg-primary/40'
       }`}></div>
       
       <div 
@@ -51,12 +51,12 @@ const TimelineCard: React.FC<TimelineCardProps> = ({
           isRinging 
             ? 'border-yellow-400 ring-4 ring-yellow-400/20 bg-yellow-400/5' 
             : isOngoing
-              ? 'border-primary/40 shadow-[0_12px_24px_-8px_rgba(37,71,244,0.15)] bg-primary/5 ring-1 ring-primary/10'
-              : 'border-slate-200 dark:border-white/5 shadow-sm hover:border-slate-300 dark:hover:border-white/10 active:scale-[0.99]'
+              ? 'border-primary/30 shadow-[0_12px_24px_-8px_rgba(37,71,244,0.1)] bg-primary/5 ring-1 ring-primary/5'
+              : 'border-slate-100 dark:border-white/5 shadow-sm hover:border-slate-200 dark:hover:border-white/10 active:scale-[0.99]'
         } py-4 px-5 cursor-pointer relative overflow-hidden`}
       >
         {isOngoing && (
-          <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
+          <div className="absolute top-0 right-0 p-2 opacity-10 pointer-events-none">
             <span className="material-symbols-outlined text-[40px] text-primary animate-pulse">pulse_alert</span>
           </div>
         )}
@@ -69,27 +69,27 @@ const TimelineCard: React.FC<TimelineCardProps> = ({
               }`}>
                 {task.icon}
               </span>
-              <p className={`text-[10px] font-bold uppercase tracking-[0.05em] ${isRinging ? 'text-yellow-400' : 'text-primary'} truncate`}>
+              <p className={`text-[10px] font-bold uppercase tracking-[0.05em] ${isRinging ? 'text-yellow-400' : 'text-primary'} truncate opacity-90`}>
                 {task.startTime} - {task.endTime}
                 {isOngoing && <span className="ml-2 bg-primary/10 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-normal">Ongoing</span>}
               </p>
             </div>
             
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight truncate">{task.name}</h3>
+              <h3 className="text-base font-bold text-slate-800 dark:text-white leading-tight truncate">{task.name}</h3>
               {hasSubtasks && (
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
                     setExpanded(!expanded);
                   }}
-                  className={`size-6 flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                  className={`size-6 flex items-center justify-center rounded-full bg-slate-50 dark:bg-white/5 transition-transform ${expanded ? 'rotate-180' : ''}`}
                 >
                   <span className="material-symbols-outlined text-sm text-neutral-dark">expand_more</span>
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-neutral-dark font-medium flex items-center gap-1.5 opacity-80">
+            <p className="text-[11px] text-neutral-dark font-medium flex items-center gap-1.5 opacity-60">
               <span className="material-symbols-outlined text-[14px]">timer</span>
               {calculateDuration(task.startTime, task.endTime)}
             </p>
@@ -102,8 +102,8 @@ const TimelineCard: React.FC<TimelineCardProps> = ({
                 isRinging 
                   ? 'bg-yellow-400 text-background-dark animate-bell-shake shadow-[0_0_15px_rgba(250,204,21,0.6)]' 
                   : task.alarmEnabled 
-                    ? 'bg-yellow-500/10 text-yellow-500/30' 
-                    : 'bg-slate-100 dark:bg-white/5 text-slate-400 opacity-20 hover:opacity-100'
+                    ? 'bg-yellow-500/10 text-yellow-600/40 dark:text-yellow-500/30' 
+                    : 'bg-slate-50 dark:bg-white/5 text-slate-300 dark:text-slate-400 opacity-30 hover:opacity-100'
               }`}
             >
               <span className={`material-symbols-outlined text-[20px] ${task.alarmEnabled || isRinging ? 'fill-1' : ''}`}>
@@ -125,7 +125,7 @@ const TimelineCard: React.FC<TimelineCardProps> = ({
         )}
 
         {expanded && hasSubtasks && (
-          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/5 space-y-3 animate-in slide-in-from-top-2 duration-300">
+          <div className="mt-4 pt-4 border-t border-slate-50 dark:border-white/5 space-y-3 animate-in slide-in-from-top-2 duration-300">
             {task.subtasks!.map((sub) => (
               <div 
                 key={sub.id} 
@@ -135,10 +135,10 @@ const TimelineCard: React.FC<TimelineCardProps> = ({
                   onToggleSubtask(task.id, sub.id);
                 }}
               >
-                <div className={`size-5 rounded-lg border flex items-center justify-center transition-all ${sub.completed ? 'bg-primary border-primary' : 'border-slate-300 dark:border-white/10'}`}>
+                <div className={`size-5 rounded-lg border flex items-center justify-center transition-all ${sub.completed ? 'bg-primary border-primary' : 'border-slate-200 dark:border-white/10'}`}>
                   {sub.completed && <span className="material-symbols-outlined text-white text-[14px] font-bold">check</span>}
                 </div>
-                <span className={`text-sm font-medium transition-all ${sub.completed ? 'text-slate-400 line-through opacity-60' : 'text-slate-700 dark:text-slate-200'}`}>
+                <span className={`text-sm font-medium transition-all ${sub.completed ? 'text-slate-300 line-through opacity-60' : 'text-slate-600 dark:text-slate-200'}`}>
                   {sub.text}
                 </span>
               </div>

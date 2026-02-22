@@ -63,5 +63,15 @@ export interface FinanceEntry {
   note?: string;
 }
 
-export type AppMode = 'routines' | 'notes' | 'finance';
-export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor' | 'tests' | 'finance-editor';
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  quantity: string;
+  category: string;
+  completed: boolean;
+  price?: number;
+  createdAt: string;
+}
+
+export type AppMode = 'routines' | 'notes' | 'finance' | 'shopping';
+export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor' | 'tests' | 'finance-editor' | 'shopping-editor';

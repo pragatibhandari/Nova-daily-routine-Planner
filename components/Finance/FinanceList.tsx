@@ -4,12 +4,17 @@ import { FinanceEntry, FinanceType } from '../../types';
 
 interface FinanceListProps {
   entries: FinanceEntry[];
+  currency: string;
+  onCurrencyChange: (currency: string) => void;
   onAdd: () => void;
   onSelect: (entry: FinanceEntry) => void;
 }
 
-const FinanceList: React.FC<FinanceListProps> = ({ entries, onAdd, onSelect }) => {
+const CURRENCIES = ['$', '€', '£', '¥', '₹', '₩', '₽'];
+
+const FinanceList: React.FC<FinanceListProps> = ({ entries, currency, onCurrencyChange, onAdd, onSelect }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'debt' | 'credit' | 'fixed'>('all');
+  const [showCurrencySelector, setShowCurrencySelector] = useState(false);
 
   const stats = useMemo(() => {
     return entries.reduce((acc, curr) => {
@@ -34,7 +39,33 @@ const FinanceList: React.FC<FinanceListProps> = ({ entries, onAdd, onSelect }) =
     <div className="flex flex-col min-h-screen pb-40 bg-background-light dark:bg-background-dark">
       <header className="px-6 pt-12 pb-6 space-y-6 sticky top-0 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-xl z-20">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">Finance</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">Finance</h1>
+            <div className="relative">
+              <button 
+                onClick={() => setShowCurrencySelector(!showCurrencySelector)}
+                className="bg-slate-100 dark:bg-white/5 size-8 rounded-full flex items-center justify-center text-sm font-bold text-primary border border-slate-200 dark:border-white/10 active:scale-90 transition-all"
+              >
+                {currency}
+              </button>
+              {showCurrencySelector && (
+                <div className="absolute top-full left-0 mt-2 bg-white dark:bg-card-dark border border-slate-100 dark:border-white/10 rounded-2xl shadow-2xl p-2 z-50 flex gap-1 min-w-[200px] animate-in zoom-in-95 duration-200">
+                  {CURRENCIES.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => {
+                        onCurrencyChange(c);
+                        setShowCurrencySelector(false);
+                      }}
+                      className={`size-8 rounded-xl flex items-center justify-center text-sm font-bold transition-all ${currency === c ? 'bg-primary text-white' : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400'}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <button onClick={onAdd} className="bg-primary/10 text-primary px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-primary/20">
             Add Record
           </button>
@@ -46,7 +77,7 @@ const FinanceList: React.FC<FinanceListProps> = ({ entries, onAdd, onSelect }) =
             className={`text-left rounded-[24px] p-4 transition-all active:scale-95 border ${activeTab === 'debt' ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}
           >
             <p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${activeTab === 'debt' ? 'text-white/70' : 'text-red-500'}`}>I Owe</p>
-            <p className={`text-lg font-bold ${activeTab === 'debt' ? 'text-white' : 'text-red-600 dark:text-red-400'}`}>${stats.debt.toLocaleString()}</p>
+            <p className={`text-lg font-bold ${activeTab === 'debt' ? 'text-white' : 'text-red-600 dark:text-red-400'}`}>{currency}{stats.debt.toLocaleString()}</p>
           </button>
           
           <button 
@@ -54,7 +85,7 @@ const FinanceList: React.FC<FinanceListProps> = ({ entries, onAdd, onSelect }) =
             className={`text-left rounded-[24px] p-4 transition-all active:scale-95 border ${activeTab === 'credit' ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-green-500/10 border-green-500/20 text-green-500'}`}
           >
             <p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${activeTab === 'credit' ? 'text-white/70' : 'text-green-500'}`}>Owed Me</p>
-            <p className={`text-lg font-bold ${activeTab === 'credit' ? 'text-white' : 'text-green-600 dark:text-green-400'}`}>${stats.credit.toLocaleString()}</p>
+            <p className={`text-lg font-bold ${activeTab === 'credit' ? 'text-white' : 'text-green-600 dark:text-green-400'}`}>{currency}{stats.credit.toLocaleString()}</p>
           </button>
 
           <button 
@@ -62,7 +93,7 @@ const FinanceList: React.FC<FinanceListProps> = ({ entries, onAdd, onSelect }) =
             className={`text-left rounded-[24px] p-4 transition-all active:scale-95 border ${activeTab === 'fixed' ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20' : 'bg-primary/10 border-primary/20 text-primary'}`}
           >
             <p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${activeTab === 'fixed' ? 'text-white/70' : 'opacity-70'}`}>Monthly</p>
-            <p className={`text-lg font-bold ${activeTab === 'fixed' ? 'text-white' : ''}`}>${stats.fixed.toLocaleString()}</p>
+            <p className={`text-lg font-bold ${activeTab === 'fixed' ? 'text-white' : ''}`}>{currency}{stats.fixed.toLocaleString()}</p>
           </button>
         </div>
 
@@ -127,7 +158,7 @@ const FinanceList: React.FC<FinanceListProps> = ({ entries, onAdd, onSelect }) =
               </div>
               <div className="text-right">
                 <p className="font-bold text-lg tracking-tight text-slate-800 dark:text-white">
-                  ${entry.amount.toLocaleString()}
+                  {currency}{entry.amount.toLocaleString()}
                 </p>
                 <p className="text-[9px] font-bold text-neutral-dark uppercase">
                   {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
