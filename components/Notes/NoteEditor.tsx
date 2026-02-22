@@ -248,7 +248,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ note, onSave, onBack, onDelete 
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar px-6 py-8">
+      <main className="flex-1 overflow-y-auto hide-scrollbar px-6 py-8 pb-32">
         <div className="max-w-3xl mx-auto space-y-8">
           <AutoExpandingTextarea 
             placeholder="Note Title"
@@ -372,15 +372,15 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ note, onSave, onBack, onDelete 
                     <div className="flex gap-4 mt-4 px-2">
                       <button onClick={() => {
                         const newRows = [...block.data.rows, Array(block.data.rows[0].length).fill('')];
-                        updateBlock(block.id, { rows: newRows });
-                        pushToHistory(blocks);
+                        const newBlocks = blocks.map(b => b.id === block.id ? { ...b, data: { rows: newRows } } : b);
+                        pushToHistory(newBlocks);
                       }} className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
                         <span className="material-symbols-outlined text-xs">add</span> Row
                       </button>
                       <button onClick={() => {
                         const newRows = block.data.rows.map((r: string[]) => [...r, '']);
-                        updateBlock(block.id, { rows: newRows });
-                        pushToHistory(blocks);
+                        const newBlocks = blocks.map(b => b.id === block.id ? { ...b, data: { rows: newRows } } : b);
+                        pushToHistory(newBlocks);
                       }} className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-1">
                         <span className="material-symbols-outlined text-xs">add</span> Column
                       </button>
@@ -400,7 +400,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ note, onSave, onBack, onDelete 
         </div>
       </main>
 
-      <footer className="p-4 pb-10 bg-white/95 dark:bg-background-dark/95 backdrop-blur-xl border-t border-slate-100 dark:border-white/5 flex items-center justify-center gap-2">
+      <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md p-4 pb-10 bg-white/95 dark:bg-background-dark/95 backdrop-blur-xl border-t border-slate-100 dark:border-white/5 flex items-center justify-center gap-2 z-40">
         <div className="bg-slate-100 dark:bg-white/5 p-1 rounded-2xl flex items-center shadow-inner">
           <button onClick={() => addBlock('text')} className="size-12 flex flex-col items-center justify-center text-neutral-dark hover:text-primary hover:bg-white dark:hover:bg-white/10 rounded-xl transition-all">
             <span className="material-symbols-outlined">title</span>
