@@ -21,9 +21,13 @@ const NoteList: React.FC<NoteListProps> = ({ notes, onSelectNote, onAddNote }) =
       <header className="sticky top-0 z-20 bg-background-light/90 dark:bg-background-dark/80 backdrop-blur-md px-6 pt-10 pb-4 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">My Notes</h1>
-          <div className="bg-primary/10 px-3 py-1 rounded-full">
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{filtered.length} Notes</span>
-          </div>
+          <button 
+            onClick={onAddNote} 
+            className="bg-rose-500 text-white px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-500/20 active:scale-95 transition-all flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-sm">add</span>
+            New Note
+          </button>
         </div>
         <div className="relative group">
           <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-neutral-dark group-focus-within:text-primary transition-colors">search</span>

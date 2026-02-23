@@ -7,10 +7,11 @@ interface ShoppingListProps {
   currency: string;
   onToggle: (id: string) => void;
   onSelect: (item: ShoppingItem) => void;
+  onDelete: (id: string) => void;
   onAdd: () => void;
 }
 
-const ShoppingList: React.FC<ShoppingListProps> = ({ items, currency, onToggle, onSelect, onAdd }) => {
+const ShoppingList: React.FC<ShoppingListProps> = ({ items, currency, onToggle, onSelect, onDelete, onAdd }) => {
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
   const [sortBy, setSortBy] = useState<'date' | 'category'>('date');
 
@@ -49,7 +50,11 @@ const ShoppingList: React.FC<ShoppingListProps> = ({ items, currency, onToggle, 
                 {sortBy === 'category' ? 'category' : 'calendar_today'}
               </span>
             </button>
-            <button onClick={onAdd} className="bg-primary/10 text-primary px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-primary/20">
+            <button 
+              onClick={onAdd} 
+              className="bg-rose-500 text-white px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-500/20 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
               Add Item
             </button>
           </div>
@@ -120,6 +125,18 @@ const ShoppingList: React.FC<ShoppingListProps> = ({ items, currency, onToggle, 
                     {currency}{item.price.toLocaleString()}
                   </p>
                 </div>
+              )}
+
+              {item.completed && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(item.id);
+                  }}
+                  className="size-8 flex items-center justify-center text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
+                >
+                  <span className="material-symbols-outlined text-lg">delete</span>
+                </button>
               )}
             </div>
           ))

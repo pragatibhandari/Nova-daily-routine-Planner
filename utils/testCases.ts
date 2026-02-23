@@ -2,7 +2,7 @@
 import { timeToMins, minsToTime, subtractMinutes } from './time';
 import { analyzeTimeline, TimelineItem } from './timeline';
 import { filterTasksByDate } from './taskUtils';
-import { Task, RepeatOption } from '../../types';
+import { Task, RepeatOption } from '../types';
 
 export interface TestResult {
   name: string;

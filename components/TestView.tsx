@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { runDiagnosticSuite, TestResult } from './utils/testCases';
+import { runDiagnosticSuite, TestResult } from '../utils/testCases';
 
 const TestView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [results, setResults] = useState<TestResult[]>([]);

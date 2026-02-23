@@ -1,5 +1,5 @@
 
-import { Task, RepeatOption } from '../../types';
+import { Task, RepeatOption } from '../types';
 import { getLocalDateString } from './time';
 
 export const filterTasksByDate = (tasks: Task[], selectedDate: string): Task[] => {

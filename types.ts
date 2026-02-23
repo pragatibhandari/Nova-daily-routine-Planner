@@ -14,6 +14,16 @@ export interface Subtask {
   completed: boolean;
 }
 
+export interface PomodoroConfig {
+  enabled: boolean;
+  workDuration: number;
+  shortBreakDuration: number;
+  longBreakDuration: number;
+  longBreakInterval: number;
+  autoStartPomodoros: boolean;
+  autoStartBreaks: boolean;
+}
+
 export interface Task {
   id: string;
   name: string;
@@ -28,6 +38,7 @@ export interface Task {
   color: string;     
   createdAt: string; 
   subtasks?: Subtask[];
+  strictMode?: boolean;
 }
 
 export type NoteBlockType = 'text' | 'checklist' | 'table' | 'doodle';
@@ -73,5 +84,37 @@ export interface ShoppingItem {
   createdAt: string;
 }
 
-export type AppMode = 'routines' | 'notes' | 'finance' | 'shopping';
-export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor' | 'tests' | 'finance-editor' | 'shopping-editor';
+export interface TodoItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  priority: 'low' | 'medium' | 'high';
+  dueDate?: string;
+  createdAt: string;
+}
+
+export type GoalCategory = 'short-term' | 'long-term' | 'year';
+
+export interface Goal {
+  id: string;
+  title: string;
+  description?: string;
+  category: GoalCategory;
+  targetDate: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+export interface FocusMusicLink {
+  id: string;
+  title: string;
+  url: string;
+}
+
+export interface PomodoroGlobalConfig extends PomodoroConfig {
+  musicEnabled: boolean;
+  selectedMusicId?: string;
+}
+
+export type AppMode = 'routines' | 'notes' | 'finance' | 'shopping' | 'todo' | 'pomodoro';
+export type ViewState = 'timeline' | 'edit' | 'settings' | 'note-editor' | 'tests' | 'finance-editor' | 'shopping-editor' | 'todo-editor' | 'goal-editor';

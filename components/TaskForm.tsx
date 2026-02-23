@@ -187,6 +187,8 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isApplyingDuration, setIsApplyingDuration] = useState(false);
 
+  const [strictMode, setStrictMode] = useState(task?.strictMode || false);
+
   const hours = Array.from({ length: 24 }).map((_, i) => i.toString().padStart(2, '0'));
   const minutes = Array.from({ length: 60 }).map((_, i) => i.toString().padStart(2, '0'));
 
@@ -426,6 +428,18 @@ const TaskForm: React.FC<TaskFormProps> = ({
             ))}
           </div>
         </section>
+        <section className="mt-6 w-full overflow-hidden">
+          <div className={`rounded-3xl p-5 transition-all border ${strictMode ? 'bg-rose-500/10 border-rose-500/30 shadow-[0_0_20px_rgba(244,63,94,0.05)]' : 'bg-white dark:bg-card-dark border-slate-200 dark:border-white/5'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-4 overflow-hidden">
+                <div className={`size-12 rounded-2xl flex items-center justify-center transition-all shrink-0 ${strictMode ? 'bg-rose-500 text-white shadow-xl' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}><span className={`material-symbols-outlined text-2xl ${strictMode ? 'fill-1' : ''}`}>lock</span></div>
+                <div className="overflow-hidden"><p className={`font-bold text-base truncate ${strictMode ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>Strict Mode</p><p className="text-slate-500 text-[11px] font-medium uppercase tracking-tighter truncate">Focus lock & No distractions</p></div>
+              </div>
+              <Toggle checked={strictMode} onChange={setStrictMode} />
+            </div>
+          </div>
+        </section>
+
         <section className="mt-10 w-full overflow-hidden">
           <div className={`rounded-3xl p-5 transition-all border ${alarmEnabled ? 'bg-yellow-500/10 border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.05)]' : 'bg-white dark:bg-card-dark border-slate-200 dark:border-white/5'}`}>
             <div className="flex items-center justify-between gap-2">
@@ -461,7 +475,22 @@ const TaskForm: React.FC<TaskFormProps> = ({
         )}
       </div>
       <div className="p-6 pb-12 bg-white/90 dark:bg-background-dark/90 backdrop-blur-3xl border-t border-slate-200 dark:border-white/5 fixed bottom-0 left-0 right-0 z-50 flex items-center justify-center overflow-hidden">
-        <button onClick={() => onSave({ id: task?.id || Math.random().toString(36).substr(2, 9), name: name.trim() || 'Untitled Routine', startTime: `${startHour}:${startMin}`, endTime: `${endHour}:${endMin}`, icon: icon, isActive: task?.isActive ?? true, repeat, alarmEnabled, alarmLeadMinutes, notes, subtasks, color: task?.color || '#2547f4', createdAt: task?.createdAt || selectedDate })} className="w-full max-w-md h-16 bg-primary hover:brightness-110 text-white font-bold rounded-[22px] shadow-[0_15px_30px_-10px_rgba(37,71,244,0.5)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 overflow-hidden"><span className="material-symbols-outlined text-2xl shrink-0">{task ? 'check_circle' : 'add_circle'}</span><span className="text-lg tracking-tight truncate">{task ? 'Update Routine' : 'Create Routine'}</span></button>
+        <button onClick={() => onSave({ 
+          id: task?.id || Math.random().toString(36).substr(2, 9), 
+          name: name.trim() || 'Untitled Routine', 
+          startTime: `${startHour}:${startMin}`, 
+          endTime: `${endHour}:${endMin}`, 
+          icon: icon, 
+          isActive: task?.isActive ?? true, 
+          repeat, 
+          alarmEnabled, 
+          alarmLeadMinutes, 
+          notes, 
+          subtasks, 
+          color: task?.color || '#f43f5e', 
+          createdAt: task?.createdAt || selectedDate,
+          strictMode
+        })} className="w-full max-w-md h-16 bg-primary hover:brightness-110 text-white font-bold rounded-[22px] shadow-[0_15px_30px_-10px_rgba(244,63,94,0.5)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 overflow-hidden"><span className="material-symbols-outlined text-2xl shrink-0">{task ? 'check_circle' : 'add_circle'}</span><span className="text-lg tracking-tight truncate">{task ? 'Update Routine' : 'Create Routine'}</span></button>
       </div>
     </div>
   );

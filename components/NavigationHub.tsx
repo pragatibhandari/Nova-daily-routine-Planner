@@ -14,7 +14,9 @@ const NavigationHub: React.FC<NavigationHubProps> = ({ currentMode, onSwitchMode
     { id: 'routines', label: 'Routines', icon: 'schedule', color: 'bg-primary' },
     { id: 'notes', label: 'Notes', icon: 'description', color: 'bg-indigo-500' },
     { id: 'finance', label: 'Finance', icon: 'account_balance_wallet', color: 'bg-emerald-500' },
-    { id: 'shopping', label: 'Shopping', icon: 'shopping_cart', color: 'bg-orange-500' }
+    { id: 'shopping', label: 'Shopping', icon: 'shopping_cart', color: 'bg-orange-500' },
+    { id: 'todo', label: 'To-Do', icon: 'checklist', color: 'bg-rose-500' },
+    { id: 'pomodoro', label: 'Pomodoro', icon: 'timer', color: 'bg-rose-500' }
   ];
 
   return (
@@ -25,7 +27,11 @@ const NavigationHub: React.FC<NavigationHubProps> = ({ currentMode, onSwitchMode
       >
         <div className="flex h-8 w-12 items-center justify-center rounded-full bg-primary/10">
           <span className="material-symbols-outlined">
-            {currentMode === 'routines' ? 'schedule' : currentMode === 'notes' ? 'description' : currentMode === 'finance' ? 'account_balance_wallet' : 'shopping_cart'}
+            {currentMode === 'routines' ? 'schedule' : 
+             currentMode === 'notes' ? 'description' : 
+             currentMode === 'finance' ? 'account_balance_wallet' : 
+             currentMode === 'shopping' ? 'shopping_cart' : 
+             currentMode === 'pomodoro' ? 'timer' : 'checklist'}
           </span>
         </div>
         <div className="flex items-center gap-1">

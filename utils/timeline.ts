@@ -1,5 +1,5 @@
 
-import { Task } from '../../types';
+import { Task } from '../types';
 import { timeToMins } from './time';
 
 export type TimelineItem = 

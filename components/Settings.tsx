@@ -1,6 +1,7 @@
 
-import React from 'react';
-import { AppMode } from '../types';
+import React, { useState } from 'react';
+import { AppMode, FocusMusicLink, PomodoroGlobalConfig } from '../types';
+import Toggle from './Toggle';
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -15,13 +16,23 @@ interface SettingsProps {
   insight: string | null;
   isOptimizing: boolean;
   onGoToTests?: () => void;
+  focusMusicLinks: FocusMusicLink[];
+  onAddMusicLink: (title: string, url: string) => void;
+  onDeleteMusicLink: (id: string) => void;
+  pomodoroConfig: PomodoroGlobalConfig;
+  onUpdatePomodoroConfig: (config: PomodoroGlobalConfig) => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({
   isDarkMode, setIsDarkMode, globalAlarmsEnabled, setGlobalAlarmsEnabled,
   appMode, onToggleMode, onBack, onResetData, fetchInsight, insight, isOptimizing,
-  onGoToTests
+  onGoToTests, focusMusicLinks, onAddMusicLink, onDeleteMusicLink,
+  pomodoroConfig, onUpdatePomodoroConfig
 }) => {
+  const [newMusicTitle, setNewMusicTitle] = useState('');
+  const [newMusicUrl, setNewMusicUrl] = useState('');
+  const [showMusicAdd, setShowMusicAdd] = useState(false);
+
   const toggleTheme = () => {
     const next = !isDarkMode;
     setIsDarkMode(next);
@@ -32,8 +43,17 @@ const Settings: React.FC<SettingsProps> = ({
   const workspaces: { id: AppMode, label: string, icon: string, desc: string, color: string }[] = [
     { id: 'routines', label: 'Routines', icon: 'schedule', desc: 'Daily schedule & habits', color: 'primary' },
     { id: 'notes', label: 'Notes', icon: 'description', desc: 'Ideas & documentation', color: 'indigo-500' },
-    { id: 'finance', label: 'Finance', icon: 'account_balance_wallet', desc: 'Ledger & management', color: 'emerald-500' }
+    { id: 'finance', label: 'Finance', icon: 'account_balance_wallet', desc: 'Ledger & management', color: 'emerald-500' },
+    { id: 'pomodoro', label: 'Pomodoro', icon: 'timer', desc: 'Focus & break intervals', color: 'rose-500' }
   ];
+
+  const handleAddMusic = () => {
+    if (!newMusicTitle || !newMusicUrl) return;
+    onAddMusicLink(newMusicTitle, newMusicUrl);
+    setNewMusicTitle('');
+    setNewMusicUrl('');
+    setShowMusicAdd(false);
+  };
 
   return (
     <div className="flex flex-col min-h-screen pb-40 bg-background-light dark:bg-background-dark px-6 pt-10 animate-in fade-in duration-300">
@@ -102,6 +122,93 @@ const Settings: React.FC<SettingsProps> = ({
               </button>
             </div>
 
+            <div className="w-full flex items-center justify-between p-4">
+              <div className="flex items-center gap-4">
+                <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined">timer</span>
+                </div>
+                <span className="font-bold text-slate-700 dark:text-white">Pomodoro Timer</span>
+              </div>
+              <Toggle 
+                checked={pomodoroConfig.enabled} 
+                onChange={(val) => onUpdatePomodoroConfig({ ...pomodoroConfig, enabled: val })} 
+              />
+            </div>
+
+            {pomodoroConfig.enabled && (
+              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-dark px-1">Work (min)</label>
+                    <input 
+                      type="number" 
+                      value={pomodoroConfig.workDuration} 
+                      onChange={(e) => onUpdatePomodoroConfig({ ...pomodoroConfig, workDuration: parseInt(e.target.value) || 0 })} 
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/30" 
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-dark px-1">Short Break (min)</label>
+                    <input 
+                      type="number" 
+                      value={pomodoroConfig.shortBreakDuration} 
+                      onChange={(e) => onUpdatePomodoroConfig({ ...pomodoroConfig, shortBreakDuration: parseInt(e.target.value) || 0 })} 
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/30" 
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-dark px-1">Long Break (min)</label>
+                    <input 
+                      type="number" 
+                      value={pomodoroConfig.longBreakDuration} 
+                      onChange={(e) => onUpdatePomodoroConfig({ ...pomodoroConfig, longBreakDuration: parseInt(e.target.value) || 0 })} 
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/30" 
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-dark px-1">Interval (pomos)</label>
+                    <input 
+                      type="number" 
+                      value={pomodoroConfig.longBreakInterval} 
+                      onChange={(e) => onUpdatePomodoroConfig({ ...pomodoroConfig, longBreakInterval: parseInt(e.target.value) || 0 })} 
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/30" 
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-white/60">Auto-start Pomodoros</span>
+                    <Toggle 
+                      checked={pomodoroConfig.autoStartPomodoros} 
+                      onChange={(val) => onUpdatePomodoroConfig({ ...pomodoroConfig, autoStartPomodoros: val })} 
+                    />
+                  </div>
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-white/60">Auto-start Breaks</span>
+                    <Toggle 
+                      checked={pomodoroConfig.autoStartBreaks} 
+                      onChange={(val) => onUpdatePomodoroConfig({ ...pomodoroConfig, autoStartBreaks: val })} 
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="w-full flex items-center justify-between p-4">
+              <div className="flex items-center gap-4">
+                <div className="size-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
+                  <span className="material-symbols-outlined">music_note</span>
+                </div>
+                <span className="font-bold text-slate-700 dark:text-white">Pomodoro Music</span>
+              </div>
+              <Toggle 
+                checked={pomodoroConfig.musicEnabled} 
+                onChange={(val) => onUpdatePomodoroConfig({ ...pomodoroConfig, musicEnabled: val })} 
+              />
+            </div>
+
             {onGoToTests && (
               <button onClick={onGoToTests} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-white/5 rounded-2xl transition-all">
                 <div className="flex items-center gap-4">
@@ -111,6 +218,53 @@ const Settings: React.FC<SettingsProps> = ({
                   <span className="font-bold text-slate-700 dark:text-white">Run Diagnostics</span>
                 </div>
                 <span className="material-symbols-outlined text-neutral-dark text-sm">chevron_right</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-dark pl-1">Focus Music (YouTube)</label>
+          <div className="bg-white dark:bg-card-dark rounded-[32px] p-4 border border-slate-100 dark:border-white/5 space-y-3 shadow-sm">
+            {focusMusicLinks.map(link => (
+              <div key={link.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-white/5 rounded-2xl">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="size-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-lg">play_circle</span>
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-xs font-bold truncate">{link.title}</p>
+                    <p className="text-[9px] text-neutral-dark truncate opacity-60">{link.url}</p>
+                  </div>
+                </div>
+                <button onClick={() => onDeleteMusicLink(link.id)} className="size-8 flex items-center justify-center text-red-400 hover:text-red-600 transition-colors">
+                  <span className="material-symbols-outlined text-lg">delete</span>
+                </button>
+              </div>
+            ))}
+
+            {showMusicAdd ? (
+              <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-2xl space-y-3 animate-in zoom-in-95 duration-200">
+                <input 
+                  placeholder="Music Title (e.g. Lofi Focus)" 
+                  value={newMusicTitle}
+                  onChange={(e) => setNewMusicTitle(e.target.value)}
+                  className="w-full bg-white dark:bg-card-dark border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+                />
+                <input 
+                  placeholder="YouTube URL" 
+                  value={newMusicUrl}
+                  onChange={(e) => setNewMusicUrl(e.target.value)}
+                  className="w-full bg-white dark:bg-card-dark border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+                />
+                <div className="flex gap-2">
+                  <button onClick={handleAddMusic} className="flex-1 bg-primary text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Add</button>
+                  <button onClick={() => setShowMusicAdd(false)} className="flex-1 bg-slate-200 dark:bg-white/10 text-neutral-dark py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowMusicAdd(true)} className="w-full py-3 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-neutral-dark hover:border-primary/40 hover:text-primary transition-all">
+                + Add Music Link
               </button>
             )}
           </div>

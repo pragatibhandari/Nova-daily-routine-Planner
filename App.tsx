@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Task, Note, FinanceEntry, ShoppingItem, AppMode, ViewState, RepeatOption } from './types';
+import { Task, Note, FinanceEntry, ShoppingItem, TodoItem, Goal, FocusMusicLink, PomodoroGlobalConfig, AppMode, ViewState, RepeatOption } from './types';
 import { INITIAL_TASKS } from './constants';
 import DateHeader from './components/DateHeader';
 import TimelineCard from './components/TimelineCard';
@@ -14,11 +14,15 @@ import FinanceList from './components/Finance/FinanceList';
 import FinanceForm from './components/Finance/FinanceForm';
 import ShoppingList from './components/Shopping/ShoppingList';
 import ShoppingForm from './components/Shopping/ShoppingForm';
+import TodoList from './components/Todo/TodoList';
+import TodoForm from './components/Todo/TodoForm';
+import GoalForm from './components/Todo/GoalForm';
+import PomodoroScreen from './components/PomodoroScreen';
 import NavigationHub from './components/NavigationHub';
 import { optimizeSchedule } from './geminiService';
-import { getLocalDateString, subtractMinutes } from './components/utils/time';
-import { analyzeTimeline } from './components/utils/timeline';
-import { filterTasksByDate, getActiveTaskId } from './components/utils/taskUtils';
+import { getLocalDateString, subtractMinutes } from './utils/time';
+import { analyzeTimeline } from './utils/timeline';
+import { filterTasksByDate, getActiveTaskId } from './utils/taskUtils';
 
 const App: React.FC = () => {
   const [appMode, setAppMode] = useState<AppMode>(() => {
@@ -43,6 +47,33 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('nova_shopping');
     return saved ? JSON.parse(saved) : [];
   });
+  const [todoItems, setTodoItems] = useState<TodoItem[]>(() => {
+    const saved = localStorage.getItem('nova_todo');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [goals, setGoals] = useState<Goal[]>(() => {
+    const saved = localStorage.getItem('nova_goals');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [focusMusicLinks, setFocusMusicLinks] = useState<FocusMusicLink[]>(() => {
+    const saved = localStorage.getItem('nova_focus_music');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', title: 'Lofi Focus', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' }
+    ];
+  });
+  const [globalPomodoroConfig, setGlobalPomodoroConfig] = useState<PomodoroGlobalConfig>(() => {
+    const saved = localStorage.getItem('nova_pomodoro_config');
+    return saved ? JSON.parse(saved) : {
+      enabled: true,
+      workDuration: 25,
+      shortBreakDuration: 5,
+      longBreakDuration: 15,
+      longBreakInterval: 4,
+      autoStartPomodoros: false,
+      autoStartBreaks: false,
+      musicEnabled: false
+    };
+  });
   const [selectedDate, setSelectedDate] = useState<string>(() => getLocalDateString(new Date()));
   const [now, setNow] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
@@ -54,6 +85,11 @@ const App: React.FC = () => {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [selectedFinance, setSelectedFinance] = useState<FinanceEntry | null>(null);
   const [selectedShoppingItem, setSelectedShoppingItem] = useState<ShoppingItem | null>(null);
+  const [selectedTodoItem, setSelectedTodoItem] = useState<TodoItem | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [todoTab, setTodoTab] = useState<'tasks' | 'goals'>('tasks');
+  const [selectedPomodoroTask, setSelectedPomodoroTask] = useState<Task | null>(null);
+  const [isPomodoroMinimized, setIsPomodoroMinimized] = useState(false);
   const [prefillTimes, setPrefillTimes] = useState<{start: string, end: string} | null>(null);
   const [currency, setCurrency] = useState<string>(() => {
     return localStorage.getItem('nova_currency') || '$';
@@ -67,6 +103,10 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('nova_notes', JSON.stringify(notes)); }, [notes]);
   useEffect(() => { localStorage.setItem('nova_finances', JSON.stringify(finances)); }, [finances]);
   useEffect(() => { localStorage.setItem('nova_shopping', JSON.stringify(shoppingItems)); }, [shoppingItems]);
+  useEffect(() => { localStorage.setItem('nova_todo', JSON.stringify(todoItems)); }, [todoItems]);
+  useEffect(() => { localStorage.setItem('nova_goals', JSON.stringify(goals)); }, [goals]);
+  useEffect(() => { localStorage.setItem('nova_focus_music', JSON.stringify(focusMusicLinks)); }, [focusMusicLinks]);
+  useEffect(() => { localStorage.setItem('nova_pomodoro_config', JSON.stringify(globalPomodoroConfig)); }, [globalPomodoroConfig]);
   useEffect(() => { localStorage.setItem('nova_currency', currency); }, [currency]);
 
   useEffect(() => {
@@ -165,6 +205,54 @@ const App: React.FC = () => {
     setShoppingItems(prev => prev.map(i => i.id === id ? { ...i, completed: !i.completed } : i));
   };
 
+  const handleSaveTodoItem = (item: TodoItem) => {
+    setTodoItems(prev => {
+      const exists = prev.find(i => i.id === item.id);
+      if (exists) return prev.map(i => i.id === item.id ? item : i);
+      return [item, ...prev];
+    });
+    setSelectedTodoItem(null);
+    setView('timeline');
+  };
+
+  const handleDeleteTodoItem = (id: string) => {
+    setTodoItems(prev => prev.filter(i => i.id !== id));
+    setSelectedTodoItem(null);
+    setView('timeline');
+  };
+
+  const handleToggleTodoItem = (id: string) => {
+    setTodoItems(prev => prev.map(i => i.id === id ? { ...i, completed: !i.completed } : i));
+  };
+
+  const handleSaveGoal = (goal: Goal) => {
+    setGoals(prev => {
+      const exists = prev.find(g => g.id === goal.id);
+      if (exists) return prev.map(g => g.id === goal.id ? goal : g);
+      return [goal, ...prev];
+    });
+    setSelectedGoal(null);
+    setView('timeline');
+  };
+
+  const handleDeleteGoal = (id: string) => {
+    setGoals(prev => prev.filter(g => g.id !== id));
+    setSelectedGoal(null);
+    setView('timeline');
+  };
+
+  const handleToggleGoal = (id: string) => {
+    setGoals(prev => prev.map(g => g.id === id ? { ...g, completed: !g.completed } : g));
+  };
+
+  const handleAddMusicLink = (title: string, url: string) => {
+    setFocusMusicLinks(prev => [...prev, { id: Math.random().toString(36).substr(2, 9), title, url }]);
+  };
+
+  const handleDeleteMusicLink = (id: string) => {
+    setFocusMusicLinks(prev => prev.filter(l => l.id !== id));
+  };
+
   const handleDeleteNote = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
     setSelectedNote(null);
@@ -184,13 +272,60 @@ const App: React.FC = () => {
 
   const timelineItems = useMemo(() => analyzeTimeline(filteredTasks), [filteredTasks]);
 
+  const renderPomodoro = () => (
+    <div className="flex flex-col min-h-screen pb-40 animate-in fade-in duration-300 px-6 pt-10">
+      <header className="mb-10">
+        <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-800 dark:text-white">Pomodoro</h1>
+        <p className="text-neutral-dark text-sm font-medium">Focus on your deep work</p>
+      </header>
+
+      <div className="flex-1 flex flex-col items-center justify-center space-y-8">
+        <div className="size-64 rounded-full border-4 border-rose-500/20 flex items-center justify-center relative">
+          <div className="absolute inset-4 rounded-full border border-dashed border-rose-500/30 animate-spin-slow"></div>
+          <div className="text-center">
+            <span className="material-symbols-outlined text-6xl text-rose-500 mb-2">timer</span>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{globalPomodoroConfig.workDuration}:00</p>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => {
+            setSelectedPomodoroTask({ 
+              id: 'global', 
+              name: 'Pomodoro Session', 
+              startTime: '', endTime: '', icon: 'timer', isActive: true, repeat: RepeatOption.NONE, alarmEnabled: false, notes: '', color: '#rose-500', createdAt: '', subtasks: [] 
+            });
+            setIsPomodoroMinimized(false);
+          }}
+          className="w-full max-w-xs py-5 bg-rose-500 text-white rounded-[32px] font-black uppercase tracking-widest shadow-2xl shadow-rose-500/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
+        >
+          <span className="material-symbols-outlined">play_arrow</span>
+          Start Focus Session
+        </button>
+
+        <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
+          <div className="bg-white dark:bg-card-dark p-4 rounded-3xl border border-slate-100 dark:border-white/5 text-center">
+            <p className="text-[10px] font-black uppercase text-neutral-dark mb-1">Work</p>
+            <p className="font-bold text-slate-800 dark:text-white">{globalPomodoroConfig.workDuration}m</p>
+          </div>
+          <div className="bg-white dark:bg-card-dark p-4 rounded-3xl border border-slate-100 dark:border-white/5 text-center">
+            <p className="text-[10px] font-black uppercase text-neutral-dark mb-1">Break</p>
+            <p className="font-bold text-slate-800 dark:text-white">{globalPomodoroConfig.shortBreakDuration}m</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderRoutines = () => (
     <div className="flex flex-col min-h-screen pb-40 animate-in fade-in duration-300">
       <DateHeader selectedDate={selectedDate} setSelectedDate={setSelectedDate} tasks={tasks} />
       <main className="flex-1 px-6 py-4 space-y-4">
-        <h2 className="text-[10px] font-bold text-neutral-dark uppercase tracking-widest">
-          {selectedDate === getLocalDateString(now) ? "Today's Schedule" : `Schedule for ${selectedDate}`}
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[10px] font-bold text-neutral-dark uppercase tracking-widest">
+            {selectedDate === getLocalDateString(now) ? "Today's Schedule" : `Schedule for ${selectedDate}`}
+          </h2>
+        </div>
         {filteredTasks.length === 0 ? (
           <div className="py-20 text-center space-y-4 opacity-40">
             <span className="material-symbols-outlined text-6xl">event_busy</span>
@@ -236,6 +371,33 @@ const App: React.FC = () => {
                   </div>
                 </div>
               );
+            } else if (item.type === 'overlap') {
+              return (
+                <div key={`overlap-${idx}`} className="ml-5 py-2">
+                  <div className="flex items-center gap-4 px-4 py-3 rounded-2xl border border-rose-100 dark:border-rose-500/20 bg-rose-50/50 dark:bg-rose-500/5 transition-all">
+                    <div className="size-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500 shrink-0">
+                      <span className="material-symbols-outlined text-xl">warning</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[10px] font-black uppercase text-rose-500 tracking-widest">
+                        Schedule Overlap ({item.duration}m)
+                      </p>
+                      <p className="text-xs font-bold text-rose-500/60">
+                        {item.start} — {item.end}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setSelectedTask(item.tasks[1]);
+                        setView('edit');
+                      }}
+                      className="px-3 py-1.5 bg-rose-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-500/20 active:scale-95 transition-all"
+                    >
+                      Fix
+                    </button>
+                  </div>
+                </div>
+              );
             }
             return null;
           })
@@ -250,17 +412,54 @@ const App: React.FC = () => {
         {view === 'timeline' && (
           <>
             {appMode === 'routines' && renderRoutines()}
+            {appMode === 'pomodoro' && renderPomodoro()}
             {appMode === 'notes' && <NoteList notes={notes} onSelectNote={(n) => { setSelectedNote(n); setView('note-editor'); }} onAddNote={() => { setSelectedNote(null); setView('note-editor'); }} />}
-            {appMode === 'finance' && <FinanceList entries={finances} currency={currency} onCurrencyChange={setCurrency} onAdd={() => { setSelectedFinance(null); setView('finance-editor'); }} onSelect={(e) => { setSelectedFinance(e); setView('finance-editor'); }} />}
-            {appMode === 'shopping' && <ShoppingList items={shoppingItems} currency={currency} onToggle={handleToggleShoppingItem} onSelect={(i) => { setSelectedShoppingItem(i); setView('shopping-editor'); }} onAdd={() => { setSelectedShoppingItem(null); setView('shopping-editor'); }} />}
+            {appMode === 'finance' && <FinanceList entries={finances} currency={currency} onCurrencyChange={setCurrency} onAdd={() => { setSelectedFinance(null); setView('finance-editor'); }} onSelect={(e) => { setSelectedFinance(e); setView('finance-editor'); }} onDelete={handleDeleteFinance} />}
+            {appMode === 'shopping' && <ShoppingList items={shoppingItems} currency={currency} onToggle={handleToggleShoppingItem} onSelect={(i) => { setSelectedShoppingItem(i); setView('shopping-editor'); }} onDelete={handleDeleteShoppingItem} onAdd={() => { setSelectedShoppingItem(null); setView('shopping-editor'); }} />}
+            {appMode === 'todo' && (
+              <TodoList 
+                items={todoItems} 
+                goals={goals} 
+                activeMainTab={todoTab}
+                onMainTabChange={setTodoTab}
+                onToggle={handleToggleTodoItem} 
+                onSelect={(i) => { setSelectedTodoItem(i); setView('todo-editor'); }} 
+                onDelete={handleDeleteTodoItem} 
+                onAdd={() => { setSelectedTodoItem(null); setView('todo-editor'); }} 
+                onToggleGoal={handleToggleGoal} 
+                onSelectGoal={(g) => { setSelectedGoal(g); setView('goal-editor'); }} 
+                onDeleteGoal={handleDeleteGoal} 
+                onAddGoal={() => { setSelectedGoal(null); setView('goal-editor'); }} 
+              />
+            )}
           </>
         )}
         
-        {view === 'settings' && <Settings isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} globalAlarmsEnabled={globalAlarmsEnabled} setGlobalAlarmsEnabled={setGlobalAlarmsEnabled} appMode={appMode} onToggleMode={handleSwitchMode} onBack={() => setView('timeline')} onResetData={() => { if(confirm("Reset all data?")) { localStorage.clear(); window.location.reload(); } }} fetchInsight={async () => { setIsOptimizing(true); const res = await optimizeSchedule(JSON.stringify(tasks)); setProductivityInsight(res); setIsOptimizing(false); }} insight={productivityInsight} isOptimizing={isOptimizing} onGoToTests={() => setView('tests')} />}
+        {selectedPomodoroTask && (
+          <PomodoroScreen 
+            task={selectedPomodoroTask} 
+            config={globalPomodoroConfig}
+            onBack={() => { setSelectedPomodoroTask(null); setIsPomodoroMinimized(false); }} 
+            onToggleStrict={() => {
+              if (selectedPomodoroTask.id !== 'global') {
+                setTasks(prev => prev.map(t => t.id === selectedPomodoroTask.id ? { ...t, strictMode: !t.strictMode } : t));
+              }
+            }} 
+            musicLinks={focusMusicLinks}
+            isMusicEnabled={globalPomodoroConfig.musicEnabled}
+            onToggleMusic={() => setGlobalPomodoroConfig(prev => ({ ...prev, musicEnabled: !prev.musicEnabled }))}
+            isMinimized={isPomodoroMinimized}
+            onToggleMinimize={() => setIsPomodoroMinimized(!isPomodoroMinimized)}
+          />
+        )}
+        
+        {view === 'settings' && <Settings isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} globalAlarmsEnabled={globalAlarmsEnabled} setGlobalAlarmsEnabled={setGlobalAlarmsEnabled} appMode={appMode} onToggleMode={handleSwitchMode} onBack={() => setView('timeline')} onResetData={() => { if(confirm("Reset all data?")) { localStorage.clear(); window.location.reload(); } }} fetchInsight={async () => { setIsOptimizing(true); const res = await optimizeSchedule(JSON.stringify(tasks)); setProductivityInsight(res); setIsOptimizing(false); }} insight={productivityInsight} isOptimizing={isOptimizing} onGoToTests={() => setView('tests')} focusMusicLinks={focusMusicLinks} onAddMusicLink={handleAddMusicLink} onDeleteMusicLink={handleDeleteMusicLink} pomodoroConfig={globalPomodoroConfig} onUpdatePomodoroConfig={setGlobalPomodoroConfig} />}
         {view === 'edit' && <TaskForm task={selectedTask} prefillStart={prefillTimes?.start} prefillEnd={prefillTimes?.end} onSave={handleSaveTask} onBack={() => { setSelectedTask(null); setPrefillTimes(null); setView('timeline'); }} onDelete={(id) => { setTasks(prev => prev.filter(t => t.id !== id)); setView('timeline'); }} allTasks={tasks} selectedDate={selectedDate} />}
         {view === 'note-editor' && <NoteEditor note={selectedNote} onSave={handleSaveNote} onBack={() => { setSelectedNote(null); setView('timeline'); }} onDelete={handleDeleteNote} />}
         {view === 'finance-editor' && <FinanceForm entry={selectedFinance} currency={currency} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onBack={() => { setSelectedFinance(null); setView('timeline'); }} />}
         {view === 'shopping-editor' && <ShoppingForm item={selectedShoppingItem} currency={currency} onSave={handleSaveShoppingItem} onDelete={handleDeleteShoppingItem} onBack={() => { setSelectedShoppingItem(null); setView('timeline'); }} />}
+        {view === 'todo-editor' && <TodoForm item={selectedTodoItem} onSave={handleSaveTodoItem} onDelete={handleDeleteTodoItem} onBack={() => { setSelectedTodoItem(null); setView('timeline'); }} />}
+        {view === 'goal-editor' && <GoalForm goal={selectedGoal} onSave={handleSaveGoal} onDelete={handleDeleteGoal} onBack={() => { setSelectedGoal(null); setView('timeline'); }} />}
         {view === 'tests' && <TestView onBack={() => setView('settings')} />}
         
         {view === 'timeline' && (
@@ -273,11 +472,30 @@ const App: React.FC = () => {
                   if (appMode === 'routines') { setPrefillTimes(null); setSelectedTask(null); setView('edit'); } 
                   else if (appMode === 'notes') { setSelectedNote(null); setView('note-editor'); }
                   else if (appMode === 'finance') { setSelectedFinance(null); setView('finance-editor'); }
-                  else { setSelectedShoppingItem(null); setView('shopping-editor'); }
+                  else if (appMode === 'shopping') { setSelectedShoppingItem(null); setView('shopping-editor'); }
+                  else if (appMode === 'pomodoro') {
+                    setSelectedPomodoroTask({ 
+                      id: 'global', 
+                      name: 'Pomodoro Session', 
+                      startTime: '', endTime: '', icon: 'timer', isActive: true, repeat: RepeatOption.NONE, alarmEnabled: false, notes: '', color: '#rose-500', createdAt: '', subtasks: [] 
+                    });
+                    setIsPomodoroMinimized(false);
+                  }
+                  else { 
+                    if (todoTab === 'tasks') {
+                      setSelectedTodoItem(null); 
+                      setView('todo-editor'); 
+                    } else {
+                      setSelectedGoal(null);
+                      setView('goal-editor');
+                    }
+                  }
                 }} 
-                className="size-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white dark:border-background-dark active:scale-95 transition-all"
+                className="size-16 bg-rose-500 text-white rounded-full shadow-2xl shadow-rose-500/30 flex items-center justify-center -mt-8 border-4 border-white dark:border-background-dark active:scale-95 transition-all"
               >
-                <span className="material-symbols-outlined text-3xl">add</span>
+                <span className="material-symbols-outlined text-3xl">
+                  {appMode === 'pomodoro' ? 'play_arrow' : 'add'}
+                </span>
               </button>
               
               <button onClick={() => setView('settings')} className="flex flex-col items-center gap-1 flex-1 text-neutral-dark">

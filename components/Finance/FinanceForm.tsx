@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { FinanceEntry, FinanceType, FinanceCategory } from '../../types';
+import DatePicker from '../DatePicker';
 
 interface FinanceFormProps {
   entry: FinanceEntry | null;
@@ -133,16 +134,12 @@ const FinanceForm: React.FC<FinanceFormProps> = ({ entry, currency, onSave, onDe
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-dark pl-1">Transaction Date</label>
-              <input 
-                type="date"
-                value={date}
-                max={today}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-white dark:bg-card-dark border border-slate-100 dark:border-white/5 rounded-2xl h-14 px-4 font-bold outline-none text-sm"
-              />
-            </div>
+            <DatePicker 
+              label="Transaction Date"
+              value={date}
+              maxDate={today}
+              onChange={setDate}
+            />
             {type !== 'fixed' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-dark pl-1">Status</label>
